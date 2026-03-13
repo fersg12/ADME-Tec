@@ -1,54 +1,37 @@
-name: ADMETEC
+name: admetFinal
 channels:
-  - conda-forge
-  - defaults
   - pytorch
+  - conda-forge
+
 dependencies:
-  - pip
   - python=3.10
-  - numpy
-  - openpyxl
-  - pandas
-  - rdkit
-  - reportlab
+  - pip
+  - numpy=1.24.4
+  - pandas=2.1.0
   - scipy
-  - seaborn
+  - tqdm
+  - rdkit=2023.3.3
+  - seaborn=0.13.0
+  - plotly
+  - openpyxl=3.1.2
+  - requests
+  - streamlit
+  - ipykernel
+  - pytorch=2.5.0
+  - setuptools=78.1.1=py310h06a4308_0
   - pip:
-      - admet_ai
-      - argparse
-      - charset-normalizer==3.4.1
-      - chembl_webresource_client
-      - chemfunc==1.0.4
-      - chemprop==1.6.1
-      - cirpy
-      - click==8.1.8
-      - dataclasses==0.6
-      - flask==3.0.0
-      - gunicorn==21.2.0
-      - idna==3.10
-      - kaleido
-      - llvmlite==0.44.0
-      - molecular-rectifier==1.0.1
-      - numba==0.61.2
-      - opencv-python-headless
-      - pdf2image
-      - plotly
-      - py3dmol==2.4.2
-      - pyarrow==19.0.1
-      - pynndescent==0.5.13
-      - pystow==0.7.0
-      - PyTDC==0.4.1
-      - requests==2.32.3
-      - scikit-learn==1.6.1
-      - streamlit
-      - svglib
-      - threadpoolctl==3.6.0
-      - torch==2.5.1
-      - tqdm==4.67.1
-      - typed-argument-parser==1.9.0
-      - urllib3==2.4.0
-      - uv 
-    
-
-
-
+    - chemfunc==1.0.4
+    - chemprop==1.6.1
+    - flask==3.0.0
+    - gunicorn==21.2.0
+    - numpy==1.25.2
+    - openpyxl==3.1.2
+    - pandas==2.1.0
+    - PyTDC==0.4.1
+    - rdkit==2023.3.3
+    - seaborn==0.13.0
+    - torch==2.5.0
+    - tqdm==4.66.1
+    - typed-argument-parser==1.9.0
+    - admet-ai==1.3.1
+    - svglib==1.5.1
