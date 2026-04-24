@@ -56,6 +56,7 @@ from src.admet.desirability_conf import PROPERTY_CONFIG
 @st.cache_resource
 def load_admet_model():
     return ADMETModel()
+
 # ============================== TORCH PATCH =============================
 # Fix compatibility with PyTorch ≥ 2.6 when loading serialized objects
 _original_torch_load = torch.load
@@ -81,7 +82,28 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+def icon_to_base64(image):
+    from io import BytesIO
+    import base64
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+
+LOGO_PATH = PROJECT_ROOT / "src" / "assets" / "ADME-Tec3.png"
+logo = Image.open(LOGO_PATH)
+
+with st.sidebar:
+    st.markdown(
+        f"""
+        <div style="text-align:center;">
+            <img src="data:image/png;base64,{icon_to_base64(logo)}" width="300">
+        <hr>
+        """,
+        unsafe_allow_html=True
+    )
 # ============================== UI STYLING ==============================
+
 st.markdown(
     """
     <style>
@@ -240,7 +262,6 @@ if smiles_list:
 
 
 # =========================== METABOLITE PREDICTION ============================
-
 
 if smiles_list:
 
@@ -842,4 +863,4 @@ if (
 
 # ---------------------- Contact ----------------------
 st.markdown("---")
-st.markdown("For questions or support, contact: **Fernanda Saldivar** – [fer.saldivarg@tec.mx](mailto:fernanda.saldivarg@tec.mx)")
+st.markdown("© 2026 ADME-Tec · Developed by Nano]°[Biostructures RG · Tecnologico de Monterrey | [GitHub Repository](https://github.com/NanoBiostructuresRG/NanoBiostructuresRG.github.io)")
