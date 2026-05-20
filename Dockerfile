@@ -13,4 +13,4 @@ SHELL ["/bin/bash", "-c"]
 EXPOSE 10000
 
 # Aquí Render inyecta $PORT y se expande correctamente
-CMD conda run --no-capture-output -n Adme-Tec streamlit run ui/ADME-Tec_app.py --server.port=$PORT --server.address=0.0.0.0
+CMD conda run --no-capture-output -n Adme-Tec streamlit run ui/main.py --server.port=$PORT --server.address=0.0.0.0
