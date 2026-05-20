@@ -9,15 +9,15 @@ This module implements an interactive web interface for:
 - ChEMBL / DrugBank reference retrieval
 - Metabolite prediction (GLORYx)
 - Chemical similarity analysis
-- ADME radar visualization
 - Desirability‑based compound prioritization
+- ADME radar visualization
 
 
 The code is organized in logical sections following the Streamlit
 execution flow to ensure clarity and reproducibility.
 
 
-Author: Fernanda Saldivar
+Author: Fernanda Saldivar 
 """
 
 # ============================== IMPORTS ==============================
@@ -31,7 +31,8 @@ import sys
 from pathlib import Path
 import base64
 from io import BytesIO
-from rdkit import Chem
+from rdkit import Chem 
+
 
 # --- Add project root to Python path ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -46,11 +47,10 @@ from src.admet.radar_plot import plot_radar_with_min_max_df
 from src.admet.adme_mappings import categories_adme, map_columns_perc, map_columns
 from src.target.ATC_utils import get_drugbank_by_atc
 from src.admet.GloryX import calcular_metabolitos, visualizar_metabolitos
-from src.chemistry.similarity import calcular_similitud, visualizar_top_similares, plot_similarity_bars
+from src.chemistry.similarity import calcular_similitud, plot_heatmap_similitud, visualizar_top_similares, plot_similarity_bars, highlight_max_ref
 from src.admet.ranges_utils import prepare_ranges_from_reference
 from src.admet.desirability_score import normalize_weights, compute_desirability, compute_desirability_geometric
 from src.admet.desirability_conf import PROPERTY_CONFIG 
-#from src.admet.plot_utils import plot_desirability_with_uncertainty 
 
 # ========================= ADMET MODEL LOADING ==========================
 @st.cache_resource
@@ -70,8 +70,7 @@ torch.load = safe_torch_load
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-
-ICON_PATH = PROJECT_ROOT / "src" / "assets" / "IOR1.png"
+ICON_PATH = PROJECT_ROOT / "src" / "assets" / "Banner.png"
 
 icon = Image.open(ICON_PATH)
 
@@ -90,59 +89,169 @@ def icon_to_base64(image):
     return base64.b64encode(buffered.getvalue()).decode()
 
 
-LOGO_PATH = PROJECT_ROOT / "src" / "assets" / "ADME-Tec3.png"
-logo = Image.open(LOGO_PATH)
-
-with st.sidebar:
-    st.markdown(
-        f"""
-        <div style="text-align:center;">
-            <img src="data:image/png;base64,{icon_to_base64(logo)}" width="300">
-        <hr>
-        """,
-        unsafe_allow_html=True
-    )
 # ============================== UI STYLING ==============================
 
+banner_url = "https://tec.mx/es/investigacion/instituto-de-investigacion-sobre-obesidad"
+
 st.markdown(
-    """
-    <style>
-    .block-container { margin: auto; max-width: 1100px; text-align: center; }
-    </style>
+    f"""
+    <a href="{banner_url}" target="_blank">
+        <img src="data:image/png;base64,{icon_to_base64(icon)}"
+             style="width:100%; height:auto; border-radius:10px;">
+    </a>
     """,
     unsafe_allow_html=True
 )
 
-def icon_to_base64(image: Image.Image) -> str:
-    buffered = BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode()
+st.title("ADME-TEC")
 
-banner_url = "https://tec.mx/es/investigacion/instituto-de-investigacion-sobre-obesidad"
-col1, col2, col3 = st.columns([0.3, 3, 0.3])
+st.markdown(
+    "<p style='color:#64748B; font-size:16px;'>Context-aware ADME prioritization</p>",
+    unsafe_allow_html=True
+)
 
-with col2:
-    st.markdown(
-        f"""
-        <a href="{banner_url}" target="_blank">
-            <img src="data:image/png;base64,{icon_to_base64(icon)}" style="width:100%; height:auto;">
-        </a>
-        """,
-        unsafe_allow_html=True
-    )
-    st.title("ADME-TEC")
-    st.markdown(
-        """
-        <div style="text-align: justify; font-size:18px; line-height:2.5;">
-            Interactive platform for <strong>ADME</strong> analysis, prediction,
-            and visualization of chemical compound properties.
+# ==============================
+# REQUIRED INPUT (EXPANDER)
+# ==============================
+with st.expander("ℹ️ Required Input", expanded=False):
+    st.markdown("""
+    <div style="text-align: justify;">
+    <ul>
+        <li><strong>Molecules (required):</strong>  Compound name or SMILES strings (single entry or CSV upload).</li>
+        <li><strong>ChEMBL ID (optional)::</strong> Identifier from the ChEMBL database used to retrieve bioactivity data, target information, and mechanism of action for a specific protein.<br>
+    <em>Examples:</em> CHEMBL235 (PPARγ), CHEMBL204 (EGFR). <br>
+                Learn how to find CHEMBL target IDs:  
+    <a href="https://www.ebi.ac.uk/chembl/explore/targets/" target="_blank">
+    ChEMBL Targets
+    </a>
+        </li>
+        <li><strong>ATC Code (optional):</strong> Classification system that groups drugs by therapeutic indication.  
+    Useful to contextualize compounds within a pharmacological class.<br>
+    <em>Examples:</em> <code>N02</code> → Analgesics,<code>A10</code> → Antidiabetics,<code>C08</code> → Calcium Channel Blockers <br>
+    Learn how to find ATC codes:
+        <a href="https://atcddd.fhi.no/atc_ddd_index/" target="_blank">
+    ATC/DDD Index
+    </a>
+    </li>
+        <li><strong>Drug Design Phase:</strong> Indicates the stage of the drug discovery pipeline, which influences how compounds are evaluated:<br>
+    <ul>
+        <li><strong>Hit identification:</strong> Early stage → prioritize broad exploration and moderate ADME constraints. 
+    A <strong>linear desirability function</strong> is applied, allowing partial satisfaction of multiple properties and promoting chemical diversity.
+    </li>
+        <li><strong>Lead optimization:</strong> Balance potency, ADME, and safety. 
+    A <strong>geometric desirability function</strong> is used, increasing sensitivity to poorly optimized properties and enforcing a more balanced profile.
+    </li>
+        <li><strong>Candidate selection:</strong> Strict optimization → high ADME, safety, and developability requirements. 
+    A <strong>geometric desirability function</strong> is also applied, strongly penalizing any suboptimal property to ensure robust drug-like behavior.
+    </li>
+    </ul>
+    </li>
+        <li><strong>Target Location:</strong>     Biological location of the target, which defines ADME requirements:<br>
+    <ul>
+        <li><strong>Extracellular:</strong> Limited permeability required</li>
+        <li><strong>Intracellular:</strong> Cell permeability is important</li>
+        <li><strong>Crosses BBB:</strong> CNS drugs → must cross the blood-brain barrier (BBB), often requiring specific physicochemical properties (e.g., bRo5 space)</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+with st.expander("⚙️ Functionalities", expanded=False):
+
+    st.markdown("""
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <style>
+    .card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        padding: 18px;
+        border-radius: 12px;
+        transition: 0.2s;
+        margin-bottom: 15px;
+    }
+
+    .card:hover {
+        box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+        transform: translateY(-3px);
+    }
+
+    .title {
+        font-weight: 600;
+        font-size: 16px;
+        color: #1E3A8A;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .material-icons {
+        font-size: 20px;
+        color: #1E3A8A;
+    }
+
+    .text {
+        font-size: 14px;
+        color: #475569;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        <div class="card">
+            <div class="title">
+                <span class="material-icons">hub</span>
+                Data Retrieval & Standardization
+            </div>
+            <div class="text">
+                Retrieve approved drugs and clinical compounds from ChEMBL.
+            </div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="card">
+            <div class="title">
+                <span class="material-icons">science</span>
+                ADMET prediction
+            </div>
+            <div class="text">
+                Compute physicochemical and ADME properties using ADMET-AI.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="card">
+            <div class="title">
+                <span class="material-icons">analytics</span>
+                Desirability Score
+            </div>
+            <div class="text">
+                Prioritize compounds based on customizable ADME desirability.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="card">
+            <div class="title">
+                <span class="material-icons">hub</span>
+                Expert modulation
+            </div>
+            <div class="text">
+                Select and weight ADME properties based on project needs.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============================= SESSION STATE =============================
-#"""Initialize persistent variables used across Streamlit reruns."""
+# Initialize persistent variables used across Streamlit reruns.
 
 default_states = {
     "adme_df": pd.DataFrame(),
@@ -160,86 +269,125 @@ for key, value in default_states.items():
         st.session_state[key] = value
 
 # ============================== SIDEBAR INPUTS ==============================
+with st.sidebar:
+    st.title("Input Parameters")
+# ================= SIDEBAR =================
 
-st.sidebar.header("Molecule Metadata")
+    result = molecule_input()
 
-# --- Example loader for demonstration purposes ---
-if st.sidebar.button("🔹Load Example"):
-    st.session_state["use_example"] = True
-    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]  # Propranolol
-    st.session_state["example_chembl"] = "CHEMBL235"
-    st.session_state["example_atc"] = ""
-    st.session_state["selected_actions"] = None
-    st.session_state["auto_run"] = True
-
-if st.session_state.get("use_example", False):
-    smiles_list = st.session_state["example_smiles"]
-    chembl_target = st.session_state["example_chembl"]
-    atc_code = st.session_state["example_atc"]
-    show_molecules(smiles_list)
-    st.sidebar.text_area("Enter SMILES", value="\n".join(smiles_list), disabled=True)
-    st.sidebar.text_input("CHEMBL target ID", value=chembl_target, disabled=True)
-    st.sidebar.text_input("ATC code", value=atc_code, disabled=True)
-    input_df = None 
-
-# ============================== INPUT HANDLING ==============================
-else:
-    with st.sidebar:
-        result = molecule_input()
-
-    # --- Handle return safely (supports old or new version) ---
-    if isinstance(result, tuple) and len(result) == 2:
-        smiles_list, input_df = result
-    else:
-        smiles_list = result
-        input_df = None
-
-    # --- Store full dataframe if available (CSV case) ---
-    if input_df is not None and isinstance(input_df, pd.DataFrame):
-        st.session_state.input_df = input_df
-
-    # --- Show molecules ---
-    if smiles_list and st.session_state.get("show_mols", True):
-        show_molecules(smiles_list)
-
-    # --- Sidebar metadata inputs ---
-    chembl_target = st.sidebar.text_input(
+    chembl_target = st.text_input(
         "CHEMBL target ID",
         placeholder="e.g., CHEMBL235",
         disabled=bool(st.session_state.get("atc_code"))
     )
 
-    atc_code = st.sidebar.text_input(
+    atc_code = st.text_input(
         "ATC code",
-        placeholder="e.g., N02BE01",
+        placeholder="e.g., N02",
         disabled=bool(chembl_target)
     )
 
-# ================= Metadata selectors =================
+    # ================= Metadata selectors =================
 
-design_phase = st.sidebar.selectbox(
-    "Drug design phase",
-    ['Hit identification','Lead optimization','Candidate selection']
-)
+    design_phase = st.selectbox(
+        "Drug design phase",
+        ['Hit identification','Lead optimization','Candidate selection']
+    )
 
-target_location = st.sidebar.selectbox(
-    "Target location",
-    ['Extracellular','Intracellular','Crosses BBB']
-)
+    target_location = st.selectbox(
+        "Target location",
+        ['Extracellular','Intracellular','Crosses BBB', 'bR05 target']
+    )
 
-# Store metadata in session
+    # ================= Run control + Example button =================
+    if st.session_state.get("auto_run", False):
+        run_analysis = True
+        st.session_state["auto_run"] = False
+        load_example_btn = False  # 
+    else:
+        run_analysis = st.button("▶ Run ADME Analysis")
+        load_example_btn = st.button("🔹 Load Example")  
+
+# ================= Store metadata =================
 st.session_state['chembl_target'] = chembl_target
 st.session_state['atc_code'] = atc_code
 st.session_state['design_phase'] = design_phase
 st.session_state['target_location'] = target_location
 
-# ================= Run control =================
+# ================= LOGIC ========================
+if load_example_btn:
+    st.session_state["use_example"] = True
+    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]
+    st.session_state["example_chembl"] = "CHEMBL235"
+    st.session_state["example_atc"] = ""
+    st.session_state["example_design"] = "Hit identification"
+    st.session_state["auto_run"] = True
 
-if st.session_state.get("auto_run", False):
-    run_analysis = True
-    st.session_state["auto_run"] = False
+# ================= Handle input =================
+
+if isinstance(result, tuple) and len(result) == 2:
+    smiles_list, input_df = result
 else:
-    run_analysis = st.sidebar.button("▶ Run ADME Analysis")
+    smiles_list = result
+    input_df = None
+
+if (smiles_list or input_df is not None) and not load_example_btn:
+    st.session_state["use_example"] = False
+
+if input_df is not None and isinstance(input_df, pd.DataFrame):
+    st.session_state.input_df = input_df
+
+# ================= Example mode =================
+if st.session_state.get("use_example", False):
+    smiles_list = st.session_state["example_smiles"]
+    chembl_target = st.session_state["example_chembl"]
+    atc_code = st.session_state["example_atc"]
+
+    show_molecules(smiles_list)
+
+    input_df = None
+
+# ================= DISPLAY NORMAL =================
+elif smiles_list and st.session_state.get("show_mols", True):
+    show_molecules(smiles_list)
+    
+
+# =========================================================
+# -------------------- ChEMBL SECTION ---------------------
+# =========================================================
+
+if chembl_target:
+
+    chembl_preview = get_mechanism_metadata(chembl_target)
+
+    if not chembl_preview.empty:
+
+        # ---------------------------
+        # Select action types for ChEMBL compounds if not already selected and cache in session state
+        # ---------------------------
+        if st.session_state.get("selected_actions") is None:
+
+            st.markdown("#### Select Action Type(s) for ChEMBL Compounds")
+
+            with st.form("action_form"):
+
+                available_actions = (
+                    chembl_preview['action_type']
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+
+                selected = []
+
+                for act in available_actions:
+                    if st.checkbox(act, key=f"act_{act}"):
+                        selected.append(act)
+
+                submitted = st.form_submit_button("Confirm Selection")
+
+                if submitted and selected:
+                    st.session_state.selected_actions = selected
 
 
 # ============================== ADME PREDICTION ==============================
@@ -251,9 +399,9 @@ if smiles_list:
 
             st.session_state.adme_df = pd.DataFrame(adme_results)
 
-            # Insert structural columns immediately
+            # Insert structural columns at the front of the DataFrame for better visibility
             st.session_state.adme_df.insert(0, "smiles", smiles_list)
-
+            # Map internal column names to user-friendly labels for display
             if input_df is not None and "ID" in input_df.columns:
                 st.session_state.adme_df["ID"] = input_df["ID"].values
 
@@ -265,7 +413,7 @@ if smiles_list:
 
 if smiles_list:
 
-    st.markdown("### Metabolite Prediction (GLORYx)")
+    st.markdown("### Metabolite prediction of input compounds(GLORYx)")
 
     # CASE 1: CSV uploaded with ID column
     if "input_df" in st.session_state and \
@@ -306,282 +454,102 @@ if smiles_list:
         st.session_state.metabolites_df = df_met
 
 
-# Display results
-if "metabolites_df" in st.session_state:
-    visualizar_metabolitos(st.session_state.metabolites_df)
+    # Display results
+    if "metabolites_df" in st.session_state:
+        visualizar_metabolitos(st.session_state.metabolites_df)
 
-
-# ============================== REFERENCE RETRIEVAL ============================== 
-#"""Retrieve ChEMBL or DrugBank reference compounds and compute ADME."""
-
-# =========================================================
-# -------------------- ChEMBL SECTION ---------------------
-# =========================================================
-
-if chembl_target:
-
-    chembl_preview = get_mechanism_metadata(chembl_target)
-
-    if not chembl_preview.empty:
-
-        # ---------------------------
-        # Select action types for ChEMBL compounds if not already selected and cache in session state
-        # ---------------------------
-        if st.session_state.get("selected_actions") is None:
-
-            st.markdown("#### Select Action Type(s) for ChEMBL Compounds")
-
-            with st.form("action_form"):
-
-                available_actions = (
-                    chembl_preview['action_type']
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
-
-                selected = []
-
-                for act in available_actions:
-                    if st.checkbox(act, key=f"act_{act}"):
-                        selected.append(act)
-
-                submitted = st.form_submit_button("Confirm Selection")
-
-                if submitted and selected:
-                    st.session_state.selected_actions = selected
-
-        # ---------------------------
-        # Calculate ADME for ChEMBL compounds based on selected action types and cache results
-        # ---------------------------
-        if (
-            st.session_state.get("selected_actions") is not None
-            and st.session_state.adme_chembl_df.empty
+# ==================== REFERENCE RETRIEVAL =======================
+#Retrieve ChEMBL or DrugBank reference compounds and compute ADME.
+# ---------------------------
+# Calculate ADME for ChEMBL compounds based on selected action types and cache results
+# ---------------------------
+        
+    if (
+        st.session_state.get("selected_actions") is not None
+        and st.session_state.adme_chembl_df.empty
         ):
 
-            try:
-                with st.spinner("Calculating ADME for ChEMBL compounds..."):
+        try:
+            with st.spinner("Calculating ADME for ChEMBL compounds..."):
 
                     chembl_df, adme_chembl_df = retrieve_chembl_data(
-                        chembl_target,
-                        st.session_state.selected_actions
+                    chembl_target,
+                    st.session_state.selected_actions
                     )
 
                     st.session_state.chembl_df = chembl_df
                     st.session_state.adme_chembl_df = adme_chembl_df
 
-            except Exception as e:
+        except Exception as e:
                 st.error(f"Error retrieving ChEMBL or ADME data: {e}")
 
-        # ---------------------------
-        # Display ChEMBL data and ADME predictions if available
-        # ---------------------------
-        if not st.session_state.get("chembl_df", pd.DataFrame()).empty:
+    # ---------------------------
+    # Display ADME predictions if available
+    # ---------------------------
 
-            st.markdown("#### Retrieved Data from ChEMBL")
-            st.dataframe(
-                st.session_state.chembl_df,
-                use_container_width=True
-            )
+    if not st.session_state.adme_chembl_df.empty:
 
-        if not st.session_state.adme_chembl_df.empty:
+        st.markdown("#### ADME Properties of ChEMBL Compounds")
+        st.dataframe(
+            st.session_state.adme_chembl_df,
+            use_container_width=True
+        )
 
-            st.markdown("#### ADME Properties of ChEMBL Compounds")
-            st.dataframe(
-                st.session_state.adme_chembl_df,
-                use_container_width=True
-            )
+    # =========================================================
+    # ----------------------- ATC SECTION ---------------------
+    # =========================================================
 
-
-# =========================================================
-# ----------------------- ATC SECTION ---------------------
-# =========================================================
-
-if atc_code:
+    if atc_code:
 
     # ---------------------------
     # Reset ATC-related session state if code changes
     # ---------------------------
-    if "last_atc" not in st.session_state:
-        st.session_state.last_atc = None
+        if "last_atc" not in st.session_state:
+            st.session_state.last_atc = None
 
-    if atc_code != st.session_state.last_atc:
-        st.session_state.adme_atc_df = pd.DataFrame()
-        st.session_state.last_atc = atc_code
+        if atc_code != st.session_state.last_atc:
+            st.session_state.adme_atc_df = pd.DataFrame()
+            st.session_state.last_atc = atc_code
 
     # ---------------------------
-    # obtain DrugBank compounds for ATC code and cache in session state
+    # Obtain DrugBank compounds for ATC code and cache in session state
     # ---------------------------
-    df_drugbank_atc = get_drugbank_by_atc(atc_code)
-    st.session_state.df_drugbank_atc = df_drugbank_atc
+        df_drugbank_atc = get_drugbank_by_atc(atc_code)
+        st.session_state.df_drugbank_atc = df_drugbank_atc
 
-    if not df_drugbank_atc.empty:
+        if not df_drugbank_atc.empty:
 
-        st.markdown(
-            f"### DrugBank Compounds for ATC {atc_code.upper()}"
-        )
+            st.markdown(
+                f"### DrugBank Compounds for ATC {atc_code.upper()}"
+            )
 
-        st.dataframe(
-            df_drugbank_atc,
-            use_container_width=True
-        )
+            st.dataframe(
+                df_drugbank_atc,
+                use_container_width=True
+            )
 
-    # STORE ALL NON-ATC COLUMNS AS ADME DATA
-    # -------------------------------------------------
-    exclude_cols = [
-        "atc",
-        "atc_name_1",
-        "atc_name_2",
-        "atc_name_3",
-        "atc_name_4",
-    ]
+        # STORE ALL NON-ATC COLUMNS AS ADME DATA
+        # -------------------------------------------------
+        exclude_cols = [
+            "atc",
+            "atc_name_1",
+            "atc_name_2",
+            "atc_name_3",
+            "atc_name_4",
+        ]
 
-    admet_cols = [
-        c for c in df_drugbank_atc.columns
-        if c not in exclude_cols
-    ]
+        admet_cols = [
+            c for c in df_drugbank_atc.columns
+            if c not in exclude_cols
+        ]
 
-    if admet_cols:
+        if admet_cols:
 
-        st.session_state.adme_atc_df = df_drugbank_atc[admet_cols].copy()
-
-    
-
-#============================= CHEMICAL SIMILARITY =============================
-
-#=========== Reference dataset selection (ChEMBL or DrugBank ATC)  ===========
-# This block determines which reference chemical dataset
-# is available in the Streamlit session state and sets:
-#   - df_ref: dataframe containing reference molecules
-#   - id_col: column with compound identifier
-#   - smiles_col: column containing SMILES strings
-# Priority is given to ChEMBL if both are present.
-
-# ==============================
-# CHEMICAL SIMILARITY
-# ==============================
-
-df_ref = None
-id_col = None
-smiles_col = None
-current_source = None
-
-
-if atc_code and (
-    "df_drugbank_atc" in st.session_state
-    and not st.session_state.df_drugbank_atc.empty
-):
-    df_ref = st.session_state.df_drugbank_atc.copy()
-    id_col = "name"
-    smiles_col = "smiles"
-    current_source = "atc"
-
-elif chembl_target and (
-    "chembl_df" in st.session_state
-    and not st.session_state.chembl_df.empty
-):
-    df_ref = st.session_state.chembl_df.copy()
-    id_col = "molecule_chembl_id"
-    smiles_col = "smiles"
-    current_source = "chembl"
-
-# -----------------------------
-# Reset cache for similarity calculations if reference source changes
-# -----------------------------
-
-if st.session_state.get("similarity_source") != current_source:
-    st.session_state.pop("similarity_df", None)
-    st.session_state["similarity_source"] = current_source
-
-# ==========================================================
-# Execute chemical similarity analysis if reference dataset and input SMILES are available
-# ==========================================================
-
-if df_ref is not None and smiles_list:
-
-    st.markdown("## Chemical Similarity (ChEMBL / ATC)")
-
-    # -------------------------
-    # Process reference dataset: standardize SMILES, curate structures, and prepare for similarity calculations
-    # -------------------------
-
-    df_proc = df_ref[[smiles_col, id_col]].dropna().copy()
-
-    processed = df_proc.apply(process_molecule_row, axis=1, result_type="expand")
-    df_proc = pd.concat([df_proc, processed], axis=1)
-
-    df_proc = df_proc[df_proc["error"].isna()].copy()
-
-    df_proc["curated_smiles"] = df_proc["curated_smiles"].astype(str)
-    df_proc[id_col] = df_proc[id_col].astype(str)
-
-    df_proc = df_proc.drop_duplicates(
-        subset=[id_col, "curated_smiles"]
-    ).reset_index(drop=True)
-
-    # -------------------------
-    # Process input SMILES: standardize and curate the first input molecule for similarity comparison
-    # -------------------------
-
-    input_df = pd.DataFrame({"smiles": [smiles_list[0]]})
-    input_proc = input_df.apply(process_molecule_row, axis=1, result_type="expand")
-
-    if not input_proc["error"].isna().iloc[0]:
-
-        st.error("Input SMILES could not be standardized.")
-
-    else:
-
-        curated_input = str(input_proc["curated_smiles"].iloc[0])
-
-        # -------------------------
-        # Calculate chemical similarity between the curated input molecule and the reference dataset
-        # -------------------------
-
-        if "similarity_df" not in st.session_state:
-
-            with st.spinner("Calculating chemical similarity..."):
-                st.session_state.similarity_df = calcular_similitud(
-                    input_smiles=curated_input,
-                    df_ref=df_proc,
-                    smiles_col="curated_smiles",
-                    id_col=id_col
-                )
-
-        # -------------------------
-        # Visualize top similar compounds and their similarity scores using bar plots
-        # -------------------------
-
-        visualizar_top_similares(
-            input_smiles=curated_input,
-            df_sim=st.session_state.similarity_df,
-            top_n=5,
-        )
-
-        fig = plot_similarity_bars(
-            st.session_state.similarity_df,
-            top_n=5
-        )
-
-        st.pyplot(fig)
-
-        st.markdown(
-            "Similarity computed using Morgan fingerprints (2048 bits) "
-            "and Tanimoto coefficient."
-        )
-
+            st.session_state.adme_atc_df = df_drugbank_atc[admet_cols].copy()
 
 # ============================================================
+# ADME PROPERTY SELECTION, WEIGHTING AND DESIRABILITY SCORING
 # ============================================================
-# ADME PROPERTY SELECTION, WEIGHTING & RADAR VISUALIZATION
-# ============================================================
-# This block manages interactive ADME profiling in three stages: 
-# # 1) Detection of available ADME reference dataset 
-# # 2) User-driven selection of ADME properties and weight assignment 
-# # 3) Radar plot comparison between input compound(s) and reference space  
-# # The workflow is executed only when: 
-# # - ADME predictions exist for the input compound(s) 
-# # - At least one reference ADME dataset (ChEMBL or DrugBank ATC) is available 
 
 # ------------------------------------------------------------
 # Initialize session state safely
@@ -591,7 +559,6 @@ if "selected_adme_props" not in st.session_state:
 
 if "adme_weights" not in st.session_state:
     st.session_state.adme_weights = {}
-
 
 # ------------------------------------------------------------
 # Detect available ADME reference dataset
@@ -613,7 +580,6 @@ elif (
     ref_key = "adme_atc_df"
     ref_label = "DrugBank (ATC) compounds"
 
-
 # ------------------------------------------------------------
 # Display ADME profiling only if input + reference exist
 # ------------------------------------------------------------
@@ -627,13 +593,12 @@ if (
     input_adme_df = st.session_state.adme_df
 
     st.markdown("---")
-    st.markdown(f"## ADME Profiling vs {ref_label}")
+    st.markdown(f"## Context-Aware Prioritization Using {ref_label}")
 
     is_single_molecule = len(input_adme_df) == 1
 
-
     # ========================================================
-    # STEP 1 — PROPERTY SELECTION
+    # PROPERTY SELECTION
     # ========================================================
     with st.form("select_adme_props_form"):
 
@@ -669,7 +634,7 @@ if (
 
 
     # ========================================================
-    # STEP 2 — WEIGHTS (ONLY FOR MULTIPLE MOLECULES)
+    # WEIGHTS (ONLY FOR MULTIPLE MOLECULES)
     # ========================================================
     if not is_single_molecule and st.session_state.selected_adme_props:
 
@@ -697,6 +662,402 @@ if (
         if submitted_weights:
             st.session_state.adme_weights = weights_tmp
             st.success("ADME weights saved successfully.")
+
+
+    # ========================================================
+    # DESIRABILITY SCORING DEPENDING ON DESIGN PHASE
+    # ========================================================
+
+    if (
+        ref_key is not None
+        and "adme_df" in st.session_state
+        and not st.session_state.adme_df.empty
+    ):
+
+        ref_df = st.session_state[ref_key]
+        input_adme_df = st.session_state.adme_df
+
+        is_single_molecule = len(input_adme_df) == 1
+        is_hit_phase = design_phase == "Hit identification"
+        is_geo_phase = design_phase in ["Lead optimization", "Candidate selection"]
+
+        # -----------------------------
+        # UI selections
+        # -----------------------------
+        selected_ui_props = st.session_state.get("selected_adme_props", [])
+        all_ui_weights = st.session_state.get("adme_weights", {})
+
+        # -----------------------------
+        # Convert UI → internal keys
+        # -----------------------------
+        selected_internal_props = [
+            map_columns[p]
+            for p in selected_ui_props
+            if p in map_columns
+        ]
+
+        # -----------------------------
+        # Convert weights to internal keys
+        # -----------------------------
+        internal_weights = {
+            map_columns[k]: v
+            for k, v in all_ui_weights.items()
+            if k in map_columns
+        }
+
+        # -----------------------------
+        # Filter only selected properties
+        # -----------------------------
+        filtered_weights = {
+            prop: internal_weights[prop]
+            for prop in selected_internal_props
+            if prop in internal_weights
+        }
+
+        enable_desirability = (
+            not is_single_molecule
+            and selected_internal_props
+            and filtered_weights
+            and (is_hit_phase or is_geo_phase)
+        )
+
+        if enable_desirability:
+
+            try:
+                weights = normalize_weights(filtered_weights)
+            
+                # -----------------------------------------
+                # Filter PROPERTY_CONFIG only for selected
+                # -----------------------------------------
+                filtered_config = {
+                    k: v
+                    for k, v in PROPERTY_CONFIG.items()
+                    if k in selected_internal_props
+                }
+                # ---------------------------------------
+                # Build ranges from reference dataset
+                # -----------------------------------------
+                ranges = prepare_ranges_from_reference(ref_df, filtered_config)
+            
+                #-------------------------------------------
+                if is_hit_phase:
+
+                    #st.markdown("#### Linear desirability (Hit identification)")
+
+                    desirability_df = compute_desirability(
+                        inputs=input_adme_df,
+                        ranges=ranges,
+                        weights=weights,
+                        config=filtered_config,
+                    )
+
+                    st.session_state.desirability_df = desirability_df
+                    #st.dataframe(desirability_df, use_container_width=True)
+
+                elif is_geo_phase:
+
+                    #st.markdown("#### Geometric desirability (Lead/Candidate stage)")
+
+                    desirability_geo_df = compute_desirability_geometric(
+                        inputs=input_adme_df,
+                        ranges=ranges,
+                        weights=weights,
+                        config=filtered_config,
+                    )
+
+                    st.session_state.desirability_geo_df = desirability_geo_df
+                    #st.dataframe(desirability_geo_df, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"Error computing desirability: {e}")
+
+            # ========================================================
+            # SUMMARY DASHBOARD (FIXED VERSION)
+            # ========================================================
+            if (
+                ref_key is not None
+                and not st.session_state.adme_df.empty
+            ):
+
+                ref_df = st.session_state[ref_key]
+                input_adme_df = st.session_state.adme_df
+
+                st.markdown("### Summary Dashboard")
+
+                col1, col2, col3 = st.columns(3)
+
+                # -----------------------------
+                # METRICS
+                # ---------------------------
+
+                col1.metric("Input compounds", len(input_adme_df))
+                col2.metric("Reference compounds", len(ref_df))
+
+                # -----------------------------
+                # DESIRABILITY DETECTION
+                # -----------------------------
+                df_des = None
+
+                if "desirability_df" in st.session_state and not st.session_state.desirability_df.empty:
+                    df_des = st.session_state.desirability_df
+
+                elif "desirability_geo_df" in st.session_state and not st.session_state.desirability_geo_df.empty:
+                    df_des = st.session_state.desirability_geo_df
+
+                # -----------------------------
+                # SCORE COLUMN
+                # -----------------------------
+                avg_score = None
+                score_col = None
+
+                if df_des is not None:
+
+                    score_col = next(
+                        (c for c in df_des.columns
+                        if "Desirability" in c),
+                        None
+                    )
+
+                    if score_col:
+                        avg_score = df_des[score_col].mean()
+
+                col3.metric(
+                    "Avg desirability",
+                    round(avg_score, 3) if avg_score is not None else "N/A"
+                )
+
+                # ========================================================
+                # PLOT
+                # ========================================================
+                if df_des is not None and score_col:
+
+                    st.markdown("#### Desirability scores")
+
+                    df_plot = df_des.copy()
+
+                    #ordenar ranking
+                    df_plot = df_plot.sort_values(by=score_col, ascending=False)
+
+                    # eje X
+                    if "ID" in df_plot.columns:
+                        x_vals = df_plot["ID"].astype(str)
+                    else:
+                        x_vals = df_plot.index.astype(str)
+
+                    y_vals = df_plot[score_col]
+
+                    import plotly.graph_objects as go
+
+                    fig = go.Figure()
+
+                    fig.add_trace(go.Scatter(
+                        x=x_vals,
+                        y=y_vals,
+                        mode='lines+markers',
+                        line=dict(width=2),
+                        marker=dict(size=8),
+                        fill='tozeroy',
+                        fillcolor='rgba(0, 100, 200, 0.15)'
+                    ))
+
+                    fig.update_layout(
+                        xaxis_title="Compound",
+                        yaxis_title="Desirability",
+                        template="simple_white",
+                        hovermode="x unified"
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                else:
+                    st.info("Run desirability scoring to visualize results.")
+
+                # ========================================================
+                # SHOW DESIRABILITY TABLE (FINAL OUTPUT)
+                # ========================================================
+                if df_des is not None:
+
+                    if "desirability_df" in st.session_state and df_des is st.session_state.desirability_df:
+                        st.markdown("#### Linear desirability results (Hit identification)")
+
+                    elif "desirability_geo_df" in st.session_state and df_des is st.session_state.desirability_geo_df:
+                        st.markdown("#### Geometric desirability results (Lead/Candidate stage)")
+
+                    st.dataframe(df_des, use_container_width=True)
+
+            #============================= CHEMICAL SIMILARITY =============================
+
+            #=========== Reference dataset selection (ChEMBL or DrugBank ATC)  ===========
+            # This block determines which reference chemical dataset
+            # is available in the Streamlit session state and sets:
+            #   - df_ref: dataframe containing reference molecules
+            #   - id_col: column with compound identifier
+            #   - smiles_col: column containing SMILES strings
+            # Priority is given to ChEMBL if both are present.
+
+            # ==============================
+            # CHEMICAL SIMILARITY
+            # ==============================
+
+            df_ref = None
+            id_col = None
+            smiles_col = None
+            current_source = None
+
+            if atc_code and (
+            "df_drugbank_atc" in st.session_state
+            and not st.session_state.df_drugbank_atc.empty
+            ):
+                df_ref = st.session_state.df_drugbank_atc.copy()
+                id_col = "name"
+                smiles_col = "smiles"
+                current_source = "atc"
+
+            elif chembl_target and (
+                "chembl_df" in st.session_state
+                and not st.session_state.chembl_df.empty
+            ):
+                df_ref = st.session_state.chembl_df.copy()
+                id_col = "molecule_chembl_id"
+                smiles_col = "smiles"
+                current_source = "chembl"
+
+            # -----------------------------
+            # Reset cache for similarity calculations if reference source changes
+            # -----------------------------
+
+            if st.session_state.get("similarity_source") != current_source:
+                st.session_state.pop("similarity_df", None)
+                st.session_state["similarity_source"] = current_source
+
+            # ==========================================================
+            # Execute chemical similarity workflow only if reference dataset and input molecules are available
+            # ==========================================================
+
+            if df_ref is not None and smiles_list:
+
+                st.markdown("## Chemical Similarity (ChEMBL / ATC)")
+
+                df_proc = df_ref[[smiles_col, id_col]].dropna().copy()
+
+                processed = df_proc.apply(process_molecule_row, axis=1, result_type="expand")
+                df_proc = pd.concat([df_proc, processed], axis=1)
+
+                df_proc = df_proc[df_proc["error"].isna()].copy()
+
+                df_proc["curated_smiles"] = df_proc["curated_smiles"].astype(str)
+                df_proc[id_col] = df_proc[id_col].astype(str)
+
+                df_proc = df_proc.drop_duplicates(
+                    subset=[id_col, "curated_smiles"]
+                ).reset_index(drop=True)
+
+
+            # ==========================================================
+            # Choose similarity workflow based on input type:
+            # ==========================================================
+
+            # -------- CASE 1: Multiple molecules (CSV input) → show similarity heatmap with clustering --------
+            if "input_df" in st.session_state and isinstance(st.session_state.input_df, pd.DataFrame):
+
+                df_query = st.session_state.input_df.copy()
+
+                processed_q = df_query.apply(process_molecule_row, axis=1, result_type="expand")
+                df_query = pd.concat([df_query, processed_q], axis=1)
+
+                df_query = df_query[df_query["error"].isna()].copy()
+
+                df_query["curated_smiles"] = df_query["curated_smiles"].astype(str)
+
+                if len(df_query) > 1:
+
+                    st.markdown("### Similarity Heatmap (Clustering)")  
+
+                    df_sim_matrix = plot_heatmap_similitud(
+                        df_query,
+                        df_proc,
+                        smiles_col="curated_smiles",
+                        id_col_query="ID",
+                        id_col_ref=id_col
+                    )
+                # -------- pie de figura --------
+                st.markdown(
+                    """
+                    *Heatmap of structural similarity between query compounds (rows) and reference compounds (columns), 
+                    computed using Morgan fingerprints (radius = 2, 2048 bits) and the Tanimoto coefficient. 
+                    Hierarchical clustering based on Tanimoto distance (1 − similarity) organizes compounds 
+                    according to their structural similarity.*
+                    """
+                )
+       
+                # -------- columnas de referencia --------
+                sim_cols = [c for c in df_sim_matrix.columns if c != "Mean_Similarity"]
+
+                # -------- highlight --------
+                def highlight_max_ref(row):
+                    max_val = row[sim_cols].max()
+                    return [
+                        "background-color: #2E7D32; color: white; font-weight: bold;"
+                        if (col in sim_cols and val == max_val) else ""
+                        for col, val in row.items()
+                    ]
+
+                styled_df = df_sim_matrix.style.apply(highlight_max_ref, axis=1)
+
+                # -------- mostrar tabla --------
+                st.markdown("### Similarity Matrix")
+
+                st.dataframe(
+                    styled_df,
+                    use_container_width=True
+                )
+
+            # -------- CASO 2: UNA molécula (manual input) --------
+            else:
+
+                input_df = pd.DataFrame({"smiles": [smiles_list[0]]})
+
+                input_proc = input_df.apply(process_molecule_row, axis=1, result_type="expand")
+
+                if not input_proc["error"].isna().iloc[0]:
+
+                    st.error("Input SMILES could not be standardized.")
+
+                else:
+
+                    curated_input = str(input_proc["curated_smiles"].iloc[0])
+
+                    if "similarity_df" not in st.session_state:
+
+                        with st.spinner("Calculating chemical similarity..."):
+                            st.session_state.similarity_df = calcular_similitud(
+                                input_smiles=curated_input,
+                                df_ref=df_proc,
+                                smiles_col="curated_smiles",
+                                id_col=id_col
+                            )
+
+                    visualizar_top_similares(
+                        input_smiles=curated_input,
+                        df_sim=st.session_state.similarity_df,
+                        top_n=5,
+                    )
+
+                    fig = plot_similarity_bars(
+                        st.session_state.similarity_df,
+                        top_n=5
+                    )
+
+                    st.pyplot(fig)
+
+                st.markdown(
+                    "Similarity computed using Morgan fingerprints (2048 bits) "
+                    "and Tanimoto coefficient."
+            )
+
+        else:
+            st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
+
 
 
     # ========================================================
@@ -746,119 +1107,6 @@ if (
             )
 
             st.pyplot(fig, clear_figure=True)
-
-
-# ========================================================
-# DESIRABILITY SCORING DEPENDING ON DESIGN PHASE
-# ========================================================
-
-if (
-    ref_key is not None
-    and "adme_df" in st.session_state
-    and not st.session_state.adme_df.empty
-):
-
-    ref_df = st.session_state[ref_key]
-    input_adme_df = st.session_state.adme_df
-
-    is_single_molecule = len(input_adme_df) == 1
-    is_hit_phase = design_phase == "Hit identification"
-    is_geo_phase = design_phase in ["Lead optimization", "Candidate selection"]
-
-    # -----------------------------
-    # UI selections
-    # -----------------------------
-    selected_ui_props = st.session_state.get("selected_adme_props", [])
-    all_ui_weights = st.session_state.get("adme_weights", {})
-
-    # -----------------------------
-    # Convert UI → internal keys
-    # -----------------------------
-    selected_internal_props = [
-        map_columns[p]
-        for p in selected_ui_props
-        if p in map_columns
-    ]
-
-    # -----------------------------
-    # Convert weights to internal keys
-    # -----------------------------
-    internal_weights = {
-        map_columns[k]: v
-        for k, v in all_ui_weights.items()
-        if k in map_columns
-    }
-
-    # -----------------------------
-    # Filter only selected properties
-    # -----------------------------
-    filtered_weights = {
-        prop: internal_weights[prop]
-        for prop in selected_internal_props
-        if prop in internal_weights
-    }
-
-    enable_desirability = (
-        not is_single_molecule
-        and selected_internal_props
-        and filtered_weights
-        and (is_hit_phase or is_geo_phase)
-    )
-
-    if enable_desirability:
-
-        st.markdown("### ADME desirability scoring")
-
-        try:
-            weights = normalize_weights(filtered_weights)
-            
-            st.write("Normalized weights:", weights)
-            st.write("Sum normalized weights:", sum(weights.values()))
-
-            # -----------------------------------------
-            # Filter PROPERTY_CONFIG only for selected
-            # -----------------------------------------
-            filtered_config = {
-                k: v
-                for k, v in PROPERTY_CONFIG.items()
-                if k in selected_internal_props
-            }
-            # -----------------------------------------
-            # Build ranges from reference dataset
-            # -----------------------------------------
-            ranges = prepare_ranges_from_reference(ref_df, filtered_config)
-            
-            #-------------------------------------------
-            if is_hit_phase:
-
-                st.markdown("#### Linear desirability (Hit identification)")
-
-                desirability_df = compute_desirability(
-                    inputs=input_adme_df,
-                    ranges=ranges,
-                    weights=weights,
-                    config=filtered_config,
-                )
-
-                st.session_state.desirability_df = desirability_df
-                st.dataframe(desirability_df, use_container_width=True)
-
-            elif is_geo_phase:
-
-                st.markdown("#### Geometric desirability (Lead/Candidate stage)")
-
-                desirability_geo_df = compute_desirability_geometric(
-                    inputs=input_adme_df,
-                    ranges=ranges,
-                    weights=weights,
-                    config=filtered_config,
-                )
-
-                st.session_state.desirability_geo_df = desirability_geo_df
-                st.dataframe(desirability_geo_df, use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Error computing desirability: {e}")
 
 
 # ---------------------- Contact ----------------------

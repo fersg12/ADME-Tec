@@ -126,53 +126,97 @@ def get_chembl_adme_properties(chembl_target: str) -> pd.DataFrame:
 def retrieve_chembl_data(target_id: str, selected_actions: list):
     """
     Retrieve filtered ChEMBL mechanism data and corresponding ADME predictions.
-
-    Parameters
-    ----------
-    target_id : str
-        Target ChEMBL identifier.
-    selected_actions : list
-        List of action types to filter (e.g., ["AGONIST", "INHIBITOR"]).
-
-    Returns
-    -------
-    tuple (pd.DataFrame, pd.DataFrame)
-        - Filtered ChEMBL metadata DataFrame.
-        - ADME prediction DataFrame for curated SMILES.
-        Returns empty DataFrames if no data is available.
+    Returns:
+        - filtered_df: original metadata (filtered)
+        - adme_chembl_df: ADME + metadata (aligned, ready to use)
     """
+
     chembl_df = get_mechanism_metadata(target_id)
 
     if chembl_df.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # ---------------------------
     # Filter by mechanism of action
-    filtered_df = chembl_df[chembl_df["action_type"].isin(selected_actions)].reset_index(
-        drop=True
-    )
+    # ---------------------------
+    filtered_df = chembl_df[
+        chembl_df["action_type"].isin(selected_actions)
+    ].reset_index(drop=True)
 
-    chembl_smiles = filtered_df["smiles"].dropna().tolist()
-
-    if not chembl_smiles:
+    if filtered_df.empty or "smiles" not in filtered_df.columns:
         return filtered_df, pd.DataFrame()
 
-    # --- Curate SMILES ---
-    processed_df = pd.DataFrame({"smiles": chembl_smiles}).apply(
+    # ---------------------------
+    # Curate SMILES (KEEP ALIGNMENT)
+    # ---------------------------
+    processed_df = filtered_df[["smiles"]].apply(
         process_molecule_row, axis=1, result_type="expand"
     )
 
-    valid_df = processed_df[processed_df["error"].isna()]
-    curated_smiles = valid_df["curated_smiles"].tolist()
+    valid_mask = processed_df["error"].isna()
 
-    # --- ADME prediction ---
-    adme_predictions = ADMETModel().predict(smiles=curated_smiles)
-    adme_chembl_df = pd.DataFrame(adme_predictions)
+    # Keep only valid rows, preserving alignment
+    filtered_valid = filtered_df.loc[valid_mask].reset_index(drop=True)
+    curated_smiles = processed_df.loc[valid_mask, "curated_smiles"].tolist()
 
-    # Attach identifiers
-    adme_chembl_df["chembl_id"] = filtered_df["molecule_chembl_id"].values[
-        : len(adme_chembl_df)
+    if not curated_smiles:
+        return filtered_df, pd.DataFrame()
+
+    # ---------------------------
+    # ADME prediction
+    # ---------------------------
+    try:
+        model = ADMETModel()
+        adme_predictions = model.predict(smiles=curated_smiles)
+        adme_df = pd.DataFrame(adme_predictions)
+
+    except Exception as e:
+        print(f"Error predicting ADME properties: {e}")
+        return filtered_df, pd.DataFrame()
+
+    # ---------------------------
+    # Attach metadata (NO MERGE, aligned)
+    # ---------------------------
+    # Añadir curated_smiles primero
+    filtered_valid = filtered_df.loc[valid_mask].reset_index(drop=True)
+
+    filtered_valid["curated_smiles"] = processed_df.loc[
+    valid_mask, "curated_smiles"
+    ].values
+
+    metadata_cols = [
+        "molecule_name",
+        "molecule_chembl_id",
+        "target_chembl_id",
+        "smiles",
+        "curated_smiles",
+        "target_name",
+        "action_type",
+        "mechanism_of_action",
+        "max_phase"
     ]
 
+    available_cols = [
+        col for col in metadata_cols if col in filtered_valid.columns
+    ]
+
+    adme_df = adme_df.reset_index(drop=True)
+
+    # Safety check: match lengths
+    min_len = min(len(filtered_valid), len(adme_df))
+
+    filtered_valid = filtered_valid.iloc[:min_len]
+    adme_df = adme_df.iloc[:min_len]
+
+    # Remove potential duplicate columns (very important)
+    filtered_valid = filtered_valid.loc[:, ~filtered_valid.columns.duplicated()]
+    adme_df = adme_df.loc[:, ~adme_df.columns.duplicated()]
+
+    # Final concat
+    adme_chembl_df = pd.concat(
+        [filtered_valid[available_cols], adme_df],
+        axis=1
+    )
     return filtered_df, adme_chembl_df
 
 

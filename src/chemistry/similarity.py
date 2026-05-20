@@ -2,7 +2,11 @@ import pandas as pd
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem, Draw
 import streamlit as st
-import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.cluster.hierarchy import linkage
+import matplotlib.pyplot as plt 
+import numpy as np
+
 
 
 def calcular_similitud(
@@ -204,3 +208,119 @@ def plot_similarity_bars(df_sim, top_n=5):
     plt.tight_layout()
 
     return fig
+
+
+def generar_fps(df, smiles_col="SMILES", id_col=None, radius=2, n_bits=2048):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    fps = []
+    ids = []
+
+    for idx, row in df.iterrows():
+        smi = row[smiles_col]
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            continue
+
+        fp = AllChem.GetMorganFingerprintAsBitVect(
+            mol, radius, nBits=n_bits
+        )
+
+        fps.append(fp)
+        
+        if id_col and id_col in df.columns:
+            val = row[id_col]
+
+    # 🔥 FIX: asegurar escalar
+            if isinstance(val, pd.Series):
+                val = val.iloc[0]
+
+            ids.append(str(val))
+        else:
+            ids.append(str(idx))
+
+    return fps, ids
+
+def construir_matriz_similitud(query_fps, ref_fps, query_ids, ref_ids):
+    sim_matrix = []
+
+    for fp_q in query_fps:
+        sims = DataStructs.BulkTanimotoSimilarity(fp_q, ref_fps)
+        sim_matrix.append(sims)
+
+    df_sim = pd.DataFrame(sim_matrix, index=query_ids, columns=ref_ids)
+    return df_sim
+
+
+def tanimoto_distance_matrix(fps):
+    n = len(fps)
+    dists = []
+
+    for i in range(1, n):
+        sims = DataStructs.BulkTanimotoSimilarity(fps[i], fps[:i])
+        dists.extend([1 - x for x in sims])
+
+    return np.array(dists)
+
+def highlight_max_ref(row):
+    max_val = row[sim_cols].max()
+    return [
+        "background-color: #2E7D32; color: white; font-weight: bold;"
+        if (col in sim_cols and val == max_val) else ""
+        for col, val in row.items()
+    ]
+
+def plot_heatmap_similitud(
+    df_query, 
+    df_ref, 
+    smiles_col="SMILES", 
+    id_col_query=None,
+    id_col_ref=None
+):
+
+    # ===== fingerprints =====
+    query_fps, query_ids = generar_fps(df_query, smiles_col, id_col=id_col_query)
+    ref_fps, ref_ids = generar_fps(df_ref, smiles_col, id_col=id_col_ref)
+
+    if len(query_fps) == 0 or len(ref_fps) == 0:
+        st.warning("No valid molecules for heatmap")
+        return
+
+    # ===== matriz similitud =====
+    df_sim = construir_matriz_similitud(query_fps, ref_fps, query_ids, ref_ids)
+
+    # ===== mean similarity =====
+    df_sim["Mean_Similarity"] = df_sim.mean(axis=1)
+
+
+    sim_cols = [c for c in df_sim.columns if c != "Mean_Similarity"]
+
+    # ===== clustering =====
+    row_dist = tanimoto_distance_matrix(query_fps)
+    col_dist = tanimoto_distance_matrix(ref_fps)
+
+    row_linkage = linkage(row_dist, method="average")
+    col_linkage = linkage(col_dist, method="average")
+    
+    # ===== plot =====
+    sns.set(style="white")
+
+    g = sns.clustermap(
+        df_sim,
+        row_linkage=row_linkage,
+        col_linkage=col_linkage,
+        cmap="viridis",
+        vmin=0, vmax=1,
+        figsize=(10, 8),
+        xticklabels=True,
+        yticklabels=True,
+        cbar_kws={"label": "Tanimoto similarity"}
+    )
+
+    g.ax_heatmap.set_xlabel("Reference compounds")
+    g.ax_heatmap.set_ylabel("Query compounds")
+
+    st.pyplot(g.fig)
+
+    return df_sim
