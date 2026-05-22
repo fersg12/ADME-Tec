@@ -32,6 +32,9 @@ from pathlib import Path
 import base64
 from io import BytesIO
 from rdkit import Chem 
+import plotly.graph_objects as go
+import numpy as np 
+
 
 
 # --- Add project root to Python path ---
@@ -757,8 +760,15 @@ if (
                         config=filtered_config,
                     )
 
+                    desirability_ref_df = compute_desirability(
+                        inputs=ref_df,
+                        ranges=ranges,
+                        weights=weights,
+                        config=filtered_config,
+                    )
+                    
                     st.session_state.desirability_df = desirability_df
-                    #st.dataframe(desirability_df, use_container_width=True)
+                    st.session_state.desirability_ref_df = desirability_ref_df
 
                 elif is_geo_phase:
 
@@ -770,9 +780,15 @@ if (
                         weights=weights,
                         config=filtered_config,
                     )
-
+                    desirability_ref_df = compute_desirability_geometric(
+                        inputs=ref_df,
+                        ranges=ranges,
+                        weights=weights,
+                        config=filtered_config,
+            )
+                    
                     st.session_state.desirability_geo_df = desirability_geo_df
-                    #st.dataframe(desirability_geo_df, use_container_width=True)
+                    st.session_state.desirability_ref_df = desirability_ref_df
 
             except Exception as e:
                 st.error(f"Error computing desirability: {e}")
@@ -839,44 +855,151 @@ if (
 
                     st.markdown("#### Desirability scores")
 
-                    df_plot = df_des.copy()
-
-                    #ordenar ranking
-                    df_plot = df_plot.sort_values(by=score_col, ascending=False)
-
-                    # eje X
-                    if "ID" in df_plot.columns:
-                        x_vals = df_plot["ID"].astype(str)
-                    else:
-                        x_vals = df_plot.index.astype(str)
-
-                    y_vals = df_plot[score_col]
-
-                    import plotly.graph_objects as go
 
                     fig = go.Figure()
 
+                    # ==============================
+                    # INPUT COMPOUNDS
+                    # ==============================
+                    df_input_plot = df_des.copy().sort_values(by=score_col, ascending=False)
+
+                    if "ID" in df_input_plot.columns:
+                        x_input = df_input_plot["ID"].astype(str)
+                    else:
+                        x_input = df_input_plot.index.astype(str)
+
+                    y_input = df_input_plot[score_col]
+
                     fig.add_trace(go.Scatter(
-                        x=x_vals,
-                        y=y_vals,
+                        x=x_input,
+                        y=y_input,
                         mode='lines+markers',
-                        line=dict(width=2),
-                        marker=dict(size=8),
+                        name='Input compounds',
+                        line=dict(color='royalblue', width=3),
+                        marker=dict(size=8, color='royalblue'),
                         fill='tozeroy',
-                        fillcolor='rgba(0, 100, 200, 0.15)'
+                        fillcolor='rgba(65,105,225,0.15)'
                     ))
 
+                    # ==============================
+                    # REFERENCE COMPOUNDS
+                    # ==============================
+                    if "desirability_ref_df" in st.session_state:
+
+                        df_ref_plot = st.session_state.desirability_ref_df.copy()
+
+                        df_ref_plot = df_ref_plot.sort_values(by=score_col, ascending=False)
+
+                        if "ID" in df_ref_plot.columns:
+                            x_ref = df_ref_plot["ID"].astype(str)
+                        else:
+                            x_ref = df_ref_plot.index.astype(str)
+
+                        y_ref = df_ref_plot[score_col]
+
+                        fig.add_trace(go.Scatter(
+                            x=x_ref,
+                            y=y_ref,
+                            mode='lines+markers',
+                            name='Reference compounds',
+                            line=dict(color='firebrick', width=2, dash='dash'),
+                            marker=dict(size=6, color='firebrick'),
+                            fill='tozeroy',
+                            fillcolor='rgba(178,34,34,0.10)'
+                        ))
+
+                    # ==============================
+                    # MERGE INPUT + REFERENCE
+                    # ==============================
+                    df_input_plot = df_des.copy()
+                    df_input_plot["Dataset"] = "Input"
+
+                    df_ref_plot = None
+                    if "desirability_ref_df" in st.session_state:
+                        df_ref_plot = st.session_state.desirability_ref_df.copy()
+                        df_ref_plot["Dataset"] = "Reference"
+
+                    # ------------------------------
+                    # CONCAT
+                    # ------------------------------
+                    df_all = pd.concat(
+                        [df_input_plot, df_ref_plot],
+                        ignore_index=True
+                    )
+
+                    # ------------------------------
+                    # NOMBRE EN X
+                    # ------------------------------
+                    def get_name(row):
+                        if row["Dataset"] == "Reference":
+                            return str(row.get("molecule_name", row.name))
+                        else:
+                            return str(row.get("ID", row.name))
+
+                    df_all["Compound_name"] = df_all.apply(get_name, axis=1)
+
+                    # ==============================
+                    # ORDEN GLOBAL (ya lo tienes)
+                    # ==============================
+                    df_all = df_all.sort_values(by=score_col, ascending=False).reset_index(drop=True)
+
+                    # eje X numérico común
+                    df_all["x_pos"] = np.arange(len(df_all))
+
+                    # ==============================
+                    # SPLIT DATASETS
+                    # ==============================
+                    df_input_final = df_all[df_all["Dataset"] == "Input"]
+                    df_ref_final = df_all[df_all["Dataset"] == "Reference"]
+
+                    fig = go.Figure()
+
+                    # ------------------------------
+                    # INPUT
+                    # ------------------------------
+                    fig.add_trace(go.Scatter(
+                        x=df_input_final["x_pos"],
+                        y=df_input_final[score_col],
+                        mode='lines+markers',
+                        name='Input compounds',
+                        line=dict(color='royalblue', width=3),
+                        marker=dict(size=8),
+                        fill='tozeroy',
+                        fillcolor='rgba(65,105,225,0.15)'
+                    ))
+
+                    # ------------------------------
+                    # REFERENCE
+                    # ------------------------------
+                    fig.add_trace(go.Scatter(
+                        x=df_ref_final["x_pos"],
+                        y=df_ref_final[score_col],
+                        mode='lines+markers',
+                        name='Reference compounds',
+                        line=dict(color='firebrick', width=2, dash='dash'),
+                        marker=dict(size=6),
+                        fill='tozeroy',
+                        fillcolor='rgba(178,34,34,0.10)'
+                    ))
+
+                    # ==============================
+                    # EJE X CON LABELS CORRECTOS
+                    # ==============================
                     fig.update_layout(
-                        xaxis_title="Compound",
+                        xaxis=dict(
+                            title="Compound",
+                            tickmode='array',
+                            tickvals=df_all["x_pos"],
+                            ticktext=df_all["Compound_name"],
+                            tickangle=45
+                        ),
                         yaxis_title="Desirability",
                         template="simple_white",
-                        hovermode="x unified"
+                        hovermode="x unified",
+                        legend=dict(title="Dataset")
                     )
 
                     st.plotly_chart(fig, use_container_width=True)
-
-                else:
-                    st.info("Run desirability scoring to visualize results.")
 
                 # ========================================================
                 # SHOW DESIRABILITY TABLE (FINAL OUTPUT)
@@ -1010,7 +1133,7 @@ if (
 
                 styled_df = df_sim_matrix.style.apply(highlight_max_ref, axis=1)
 
-                # -------- mostrar tabla --------
+                # -------- Table --------
                 st.markdown("### Similarity Matrix")
 
                 st.dataframe(
@@ -1018,7 +1141,7 @@ if (
                     use_container_width=True
                 )
 
-            # -------- CASO 2: UNA molécula (manual input) --------
+            # -------- CASE 2: Single molecule (manual input) --------
             else:
 
                 input_df = pd.DataFrame({"smiles": [smiles_list[0]]})
@@ -1061,60 +1184,92 @@ if (
                     "and Tanimoto coefficient."
             )
 
+            # ============================================================
+            # RADAR PLOTS 
+            # ============================================================
+
+            st.markdown("---")
+            st.markdown("## Compound Profile")
+
+            if (
+                ref_key is not None
+                and not input_adme_df.empty
+                and st.session_state.selected_adme_props
+            ):
+
+                # -----------------------------
+                # Columnas seleccionadas
+                # -----------------------------
+                selected_cols = [
+                    map_columns_perc[p]
+                    for p in st.session_state.selected_adme_props
+                    if p in map_columns_perc
+                ]
+
+                # -----------------------------
+                # Validación
+                # -----------------------------
+                missing_cols = [
+                    col for col in selected_cols
+                    if col not in input_adme_df.columns or col not in ref_df.columns
+                ]
+
+                if missing_cols:
+                    st.warning(f"Missing required ADME columns: {missing_cols}")
+
+                else:
+                    # -----------------------------
+                    # Min / Max del reference
+                    # -----------------------------
+                    min_df = pd.DataFrame([ref_df[selected_cols].min()])
+                    max_df = pd.DataFrame([ref_df[selected_cols].max()])
+
+                    # -----------------------------
+                    # LOOP POR COMPUESTO
+                    # -----------------------------
+                    for i, (_, row) in enumerate(input_adme_df.iterrows()):
+
+
+                        compound_name = str(row.get("ID", f"Compound {i+1}"))
+
+                        col1, col2 = st.columns([1, 3])
+
+                        # ==================================================
+                        # COLUMNA 1 → MOLÉCULA
+                        # ==================================================
+                        with col1:
+                            if "smiles" in input_adme_df.columns:
+                                mol = Chem.MolFromSmiles(row["smiles"])
+                                if mol:
+                                    st.image(
+                                        Chem.Draw.MolToImage(mol, size=(220, 220)),
+                                        caption=compound_name
+                                    )
+                                else:
+                                    st.write(compound_name)
+                            else:
+                                st.write(compound_name)
+
+                        # ==================================================
+                        # COLUMNA 2 → RADAR
+                        # ==================================================
+                        with col2:
+
+                            comp_df = pd.DataFrame([row[selected_cols]])
+
+                            fig = plot_radar_with_min_max_df(
+                                min_df=min_df,
+                                max_df=max_df,
+                                compuestos_df=comp_df,
+                                title=compound_name
+                            )
+
+                            st.pyplot(fig, clear_figure=True)
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
 
 
-
-    # ========================================================
-    # STEP 3 — RADAR VISUALIZATION
-    # ========================================================
-    show_radar = False
-
-    if is_single_molecule and st.session_state.selected_adme_props:
-        show_radar = True
-
-    elif (
-        not is_single_molecule
-        and st.session_state.selected_adme_props
-        and st.session_state.adme_weights
-    ):
-        show_radar = True
-
-
-    if show_radar:
-
-        st.markdown("### ADME radar comparison")
-
-        selected_cols = [
-            map_columns_perc[p]
-            for p in st.session_state.selected_adme_props
-            if p in map_columns_perc
-        ]
-
-        missing_cols = [
-            col for col in selected_cols
-            if col not in input_adme_df.columns or col not in ref_df.columns
-        ]
-
-        if missing_cols:
-            st.warning(f"Missing required ADME columns: {missing_cols}")
-
-        else:
-            min_df = pd.DataFrame([ref_df[selected_cols].min()])
-            max_df = pd.DataFrame([ref_df[selected_cols].max()])
-            compuestos_df = input_adme_df[selected_cols].reset_index(drop=True)
-
-            fig = plot_radar_with_min_max_df(
-                min_df=min_df,
-                max_df=max_df,
-                compuestos_df=compuestos_df,
-                title=f"ADME Profile Comparison vs {ref_label}",
-            )
-
-            st.pyplot(fig, clear_figure=True)
-
-
+        
 # ---------------------- Contact ----------------------
 st.markdown("---")
 st.markdown("© 2026 ADME-Tec · Developed by Nano]°[Biostructures RG · Tecnologico de Monterrey | [GitHub Repository](https://github.com/NanoBiostructuresRG/NanoBiostructuresRG.github.io)")

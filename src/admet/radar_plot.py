@@ -73,7 +73,8 @@ def plot_radar_with_min_max_df(min_df, max_df, compuestos_df, title):
     )
 
     # Plot each compound on the radar chart
-    for idx, row in compuestos_df.iterrows():
+    for i, (_, row) in enumerate(compuestos_df.iterrows()):
+        label = f"Compound {i+1}"
 
         # Extract compound property values
         valores = row[propiedades_claves].tolist()
@@ -81,7 +82,7 @@ def plot_radar_with_min_max_df(min_df, max_df, compuestos_df, title):
         # Close the circle by repeating first value
         valores += [valores[0]]
 
-        label = f"Compound {idx+1}"
+        label = f"Compound {i+1}"
 
         # Plot compound line
         ax.plot(angles, valores, label=label, linewidth=2)
