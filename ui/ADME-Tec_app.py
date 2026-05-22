@@ -262,6 +262,7 @@ default_states = {
     "metabolites_df": pd.DataFrame(),
     "selected_adme_props": [],
     "adme_weights": {},
+    "weights_confirmed": False,
 }
 
 for key, value in default_states.items():
@@ -624,19 +625,20 @@ if (
         else:
             st.session_state.selected_adme_props = selected_tmp
 
-            # Reset weights ONLY for selected properties
+            st.session_state.weights_confirmed = False
             st.session_state.adme_weights = {
-                prop: st.session_state.adme_weights.get(prop, 1.0)
-                for prop in selected_tmp
-            }
+            prop: st.session_state.adme_weights.get(prop, 1.0)
+            for prop in selected_tmp
+        }
 
-            st.success("ADME properties selected.")
+        st.success("ADME properties selected.")
 
 
     # ========================================================
     # WEIGHTS (ONLY FOR MULTIPLE MOLECULES)
     # ========================================================
-    if not is_single_molecule and st.session_state.selected_adme_props:
+    if not st.session_state.get("weights_confirmed", False):
+        st.info("Please assign and confirm weights to generate results.")
 
         with st.form("assign_adme_weights_form"):
 
@@ -661,6 +663,9 @@ if (
 
         if submitted_weights:
             st.session_state.adme_weights = weights_tmp
+
+            st.session_state.weights_confirmed = True
+
             st.success("ADME weights saved successfully.")
 
 
@@ -720,8 +725,9 @@ if (
             and filtered_weights
             and (is_hit_phase or is_geo_phase)
         )
+        weights_ready = st.session_state.get("weights_confirmed", False)
 
-        if enable_desirability:
+        if enable_desirability and weights_ready:
 
             try:
                 weights = normalize_weights(filtered_weights)
