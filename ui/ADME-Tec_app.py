@@ -1081,7 +1081,6 @@ if (
                     subset=[id_col, "curated_smiles"]
                 ).reset_index(drop=True)
 
-
             # ==========================================================
             # Choose similarity workflow based on input type:
             # ==========================================================

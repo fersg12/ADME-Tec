@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-
 def calcular_similitud(
     input_smiles: str,
     df_ref: pd.DataFrame,
@@ -232,7 +231,6 @@ def generar_fps(df, smiles_col="SMILES", id_col=None, radius=2, n_bits=2048):
         if id_col and id_col in df.columns:
             val = row[id_col]
 
-    # 🔥 FIX: asegurar escalar
             if isinstance(val, pd.Series):
                 val = val.iloc[0]
 
@@ -303,9 +301,10 @@ def plot_heatmap_similitud(
     row_linkage = linkage(row_dist, method="average")
     col_linkage = linkage(col_dist, method="average")
     
-    # ===== plot =====
+    
     sns.set(style="white")
 
+     # ===== plot =====
     g = sns.clustermap(
         df_sim,
         row_linkage=row_linkage,
@@ -318,9 +317,18 @@ def plot_heatmap_similitud(
         cbar_kws={"label": "Tanimoto similarity"}
     )
 
-    g.ax_heatmap.set_xlabel("Reference compounds")
-    g.ax_heatmap.set_ylabel("Query compounds")
+    # ===== labels =====
+    g.ax_heatmap.set_xlabel("Reference compounds", fontsize=10)
+    g.ax_heatmap.set_ylabel("Query compounds", fontsize=10)
+
+    # ===== ticks =====
+    g.ax_heatmap.tick_params(axis='x', labelsize=7)
+    g.ax_heatmap.tick_params(axis='y', labelsize=7)
+
+    # Optional: Rotate x-axis labels for better readability
+    plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha="right")
 
     st.pyplot(g.fig)
+
 
     return df_sim
