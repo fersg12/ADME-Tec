@@ -285,7 +285,7 @@ default_states = {
     "adme_weights": {},
     "weights_confirmed": False,
     #Datos de diego para cargar ejemplo
-    "result_molecule_input": None
+    "result_molecule_input": ([], None)
 }
 use_loaded_values = False # una vez que ya hayas guardado los datos cambia a True
 if use_loaded_values:
@@ -301,10 +301,13 @@ with st.sidebar:
     st.button("Save Session State", on_click=save_session_state )
     st.title("Input Parameters")
 # ================= SIDEBAR =================
-    if st.session_state["result_molecule_input"] == None: 
+    if st.session_state["result_molecule_input"] == ([], None): 
+        print("use molecule input")
         result = molecule_input()
     else:
+        print("Use session state")
         result = st.session_state["result_molecule_input"]
+        print(result)
     chembl_target = st.text_input(
         "CHEMBL target ID",
         placeholder="e.g., CHEMBL235",
