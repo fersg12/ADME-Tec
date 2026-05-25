@@ -34,7 +34,7 @@ from io import BytesIO
 from rdkit import Chem 
 import plotly.graph_objects as go
 import numpy as np 
-
+import pickle
 
 
 # --- Add project root to Python path ---
@@ -253,9 +253,27 @@ with st.expander("⚙️ Functionalities", expanded=False):
         </div>
         """, unsafe_allow_html=True)
 
+
 # ============================= SESSION STATE =============================
 # Initialize persistent variables used across Streamlit reruns.
 
+
+
+def save_session_state(file_path= "session_state.pkl"):
+    with open(file_path, 'wb') as f:
+            pickle.dump(st.session_state.to_dict(), f)
+
+
+def load_session_state(file_path = "session_state.pkl"):
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as f:
+                loaded_state = pickle.load(f)
+                print("##### LOADED SESSION ####")
+                for k, v in loaded_state.items():
+                    st.session_state[k] = v
+                    print(f"Loaded {k} into session state = {v}")
+    else:
+        print("File not found.")
 default_states = {
     "adme_df": pd.DataFrame(),
     "adme_chembl_df": pd.DataFrame(),
@@ -266,19 +284,27 @@ default_states = {
     "selected_adme_props": [],
     "adme_weights": {},
     "weights_confirmed": False,
+    #Datos de diego para cargar ejemplo
+    "result_molecule_input": None
 }
-
-for key, value in default_states.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+use_loaded_values = False # una vez que ya hayas guardado los datos cambia a True
+if use_loaded_values:
+    load_session_state()
+else:
+    for key, value in default_states.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 # ============================== SIDEBAR INPUTS ==============================
 with st.sidebar:
+    if use_loaded_values : st.text("Usando valores pre cargados")
+    st.button("Save Session State", on_click=save_session_state )
     st.title("Input Parameters")
 # ================= SIDEBAR =================
-
-    result = molecule_input()
-
+    if st.session_state["result_molecule_input"] == None: 
+        result = molecule_input()
+    else:
+        result = st.session_state["result_molecule_input"]
     chembl_target = st.text_input(
         "CHEMBL target ID",
         placeholder="e.g., CHEMBL235",
@@ -313,10 +339,11 @@ with st.sidebar:
         load_example_btn = st.button("🔹 Load Example")  
 
 # ================= Store metadata =================
-st.session_state['chembl_target'] = chembl_target
-st.session_state['atc_code'] = atc_code
-st.session_state['design_phase'] = design_phase
-st.session_state['target_location'] = target_location
+if not use_loaded_values:
+    st.session_state['chembl_target'] = chembl_target
+    st.session_state['atc_code'] = atc_code
+    st.session_state['design_phase'] = design_phase
+    st.session_state['target_location'] = target_location
 
 # ================= LOGIC ========================
 if load_example_btn:
@@ -331,6 +358,7 @@ if load_example_btn:
 
 if isinstance(result, tuple) and len(result) == 2:
     smiles_list, input_df = result
+    st.session_state["result_molecule_input"] = result
 else:
     smiles_list = result
     input_df = None
