@@ -1364,11 +1364,14 @@ if (
 
                 st.dataframe(df_des, use_container_width=True)
 
-                # ===== Heatmap =====
-                df_heatmap = plot_desirability_heatmap(df_des)
-                fig = render_heatmap(df_heatmap)
+                if not use_loaded_values:
+                    # ===== Heatmap =====
+                    df_heatmap = plot_desirability_heatmap(df_des)
+                    fig = render_heatmap(df_heatmap)
 
-                st.pyplot(fig)
+                    st.pyplot(fig)
+                else:
+                    st.image("example/Linear_desirability_heatmap.png")
         
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
