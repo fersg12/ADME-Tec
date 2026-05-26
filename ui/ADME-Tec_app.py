@@ -1314,33 +1314,40 @@ if (
                         # COLUMNA 1 → MOLÉCULA
                         # ==================================================
                         with col1:
-                            if "smiles" in input_adme_df.columns:
-                                mol = Chem.MolFromSmiles(row["smiles"])
-                                if mol:
-                                    st.image(
-                                        Chem.Draw.MolToImage(mol, size=(220, 220)),
-                                        caption=compound_name
-                                    )
+                            name = "comp_" + (compound_name.replace('.', '_')) + ".jpg"
+                            if not use_loaded_values and os.path.exists(f"example/{name}"):
+                                if "smiles" in input_adme_df.columns:
+                                    mol = Chem.MolFromSmiles(row["smiles"])
+                                    if mol:
+                                        st.image(
+                                            Chem.Draw.MolToImage(mol, size=(220, 220)),
+                                            caption=compound_name
+                                        )
+                                    else:
+                                        st.write(compound_name)
                                 else:
                                     st.write(compound_name)
                             else:
-                                st.write(compound_name)
+                                st.image(f"example/{name}") 
 
                         # ==================================================
                         # COLUMNA 2 → RADAR
                         # ==================================================
                         with col2:
-
+                            name = (compound_name.replace('.', '_')) + ".png"
                             comp_df = pd.DataFrame([row[selected_cols]])
 
-                            fig = plot_radar_with_min_max_df(
-                                min_df=min_df,
-                                max_df=max_df,
-                                compuestos_df=comp_df,
-                                title=compound_name
-                            )
+                            if not use_loaded_values and os.path.exists(f"example/{name}"):
+                                fig = plot_radar_with_min_max_df(
+                                    min_df=min_df,
+                                    max_df=max_df,
+                                    compuestos_df=comp_df,
+                                    title=compound_name
+                                )
 
-                            st.pyplot(fig, clear_figure=True)
+                                st.pyplot(fig, clear_figure=True)
+                            else:
+                                st.image(f"example/{name}") 
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
 
