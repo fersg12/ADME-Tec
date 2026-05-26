@@ -35,7 +35,7 @@ from rdkit import Chem
 import plotly.graph_objects as go
 import numpy as np 
 import pickle
-
+import time #Luego lo quitamos, es solo por render
 
 # --- Add project root to Python path ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -268,16 +268,16 @@ def load_session_state(file_path = "session_state.pkl"):
     if os.path.exists(file_path):
         with open(file_path, 'rb') as f:
                 loaded_state = pickle.load(f)
-                print("##### LOADED SESSION ####")
+                #print("##### LOADED SESSION ####")
                 values = []
                 for k, v in loaded_state.items():
                     if k != "FormSubmitter:select_adme_props_form-Confirm property selection" and k != "FormSubmitter:assign_adme_weights_form-Confirm weights":
                         st.session_state[k] = v
                         values.append(k)
                         #print(f"Loaded {k} into session state = {v}")
-                values.sort()
-                for v in values:
-                    print(v)
+                #values.sort()
+                #for v in values:
+                #    print(v)
     else:
         print("File not found.")
 default_states = {
@@ -1304,7 +1304,9 @@ if (
                     # LOOP POR COMPUESTO
                     # -----------------------------
                     for i, (_, row) in enumerate(input_adme_df.iterrows()):
-
+                        #Le damos tiempo a render, esto debemos quitarlo luego
+                        if use_loaded_values:
+                            time.sleep(3) 
 
                         compound_name = str(row.get("ID", f"Compound {i+1}"))
 
@@ -1328,6 +1330,7 @@ if (
                                 else:
                                     st.write(compound_name)
                             else:
+                                #print("No dibujando")
                                 st.image(f"example/{name}") 
 
                         # ==================================================
@@ -1347,6 +1350,7 @@ if (
 
                                 st.pyplot(fig, clear_figure=True)
                             else:
+                                #print("No dibujando")
                                 st.image(f"example/{name}") 
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
