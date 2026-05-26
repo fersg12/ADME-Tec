@@ -5,12 +5,10 @@ WORKDIR /app
 COPY . /app
 COPY environment.yml /app/environment.yml
 
+RUN conda env create -f environment.yml
+
 # Usamos shell por defecto, así las variables de entorno se expanden
 SHELL ["/bin/bash", "-c"]
-
-# Ensure conda is up-to-date and create the environment non-interactively
-RUN conda update -n base -c defaults conda -y && \
-	conda env create -f environment.yml
 
 EXPOSE 10000
 

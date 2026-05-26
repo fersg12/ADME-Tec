@@ -35,7 +35,7 @@ from rdkit import Chem
 import plotly.graph_objects as go
 import numpy as np 
 import pickle
-import time #Luego lo quitamos, es solo por render
+
 
 # --- Add project root to Python path ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -268,16 +268,16 @@ def load_session_state(file_path = "session_state.pkl"):
     if os.path.exists(file_path):
         with open(file_path, 'rb') as f:
                 loaded_state = pickle.load(f)
-                #print("##### LOADED SESSION ####")
+                print("##### LOADED SESSION ####")
                 values = []
                 for k, v in loaded_state.items():
                     if k != "FormSubmitter:select_adme_props_form-Confirm property selection" and k != "FormSubmitter:assign_adme_weights_form-Confirm weights":
                         st.session_state[k] = v
                         values.append(k)
                         #print(f"Loaded {k} into session state = {v}")
-                #values.sort()
-                #for v in values:
-                #    print(v)
+                values.sort()
+                for v in values:
+                    print(v)
     else:
         print("File not found.")
 default_states = {
@@ -1304,9 +1304,7 @@ if (
                     # LOOP POR COMPUESTO
                     # -----------------------------
                     for i, (_, row) in enumerate(input_adme_df.iterrows()):
-                        #Le damos tiempo a render, esto debemos quitarlo luego
-                        if use_loaded_values:
-                            time.sleep(3) 
+
 
                         compound_name = str(row.get("ID", f"Compound {i+1}"))
 
@@ -1316,42 +1314,33 @@ if (
                         # COLUMN 1 → MOL IMAGE 
                         # ==================================================
                         with col1:
-                            name = "comp_" + (compound_name.replace('.', '_')) + ".jpg"
-                            if not use_loaded_values and os.path.exists(f"example/{name}"):
-                                if "smiles" in input_adme_df.columns:
-                                    mol = Chem.MolFromSmiles(row["smiles"])
-                                    if mol:
-                                        st.image(
-                                            Chem.Draw.MolToImage(mol, size=(300, 300)),
-                                            caption=compound_name
-                                        )
-                                    else:
-                                        st.write(compound_name)
+                            if "smiles" in input_adme_df.columns:
+                                mol = Chem.MolFromSmiles(row["smiles"])
+                                if mol:
+                                    st.image(
+                                        Chem.Draw.MolToImage(mol, size=(300, 300)),
+                                        caption=compound_name
+                                    )
                                 else:
                                     st.write(compound_name)
                             else:
-                                #print("No dibujando")
-                                st.image(f"example/{name}") 
+                                st.write(compound_name)
 
                         # ==================================================
                         # COLUMN 2 → RADAR
                         # ==================================================
                         with col2:
-                            name = (compound_name.replace('.', '_')) + ".png"
+
                             comp_df = pd.DataFrame([row[selected_cols]])
 
-                            if not use_loaded_values and os.path.exists(f"example/{name}"):
-                                fig = plot_radar_with_min_max_df(
-                                    min_df=min_df,
-                                    max_df=max_df,
-                                    compuestos_df=comp_df,
-                                    title=compound_name
-                                )
+                            fig = plot_radar_with_min_max_df(
+                                min_df=min_df,
+                                max_df=max_df,
+                                compuestos_df=comp_df,
+                                title= compound_name 
+                            )
 
-                                st.pyplot(fig, clear_figure=True)
-                            else:
-                                #print("No dibujando")
-                                st.image(f"example/{name}") 
+                            st.pyplot(fig, clear_figure=True)
         
         
             if df_des is not None:
