@@ -388,6 +388,7 @@ if load_example_btn:
     asignar_session()
     use_loaded_values = True
     st.session_state["use_loaded_values"] = True
+    st.rerun()
 
 #    st.session_state["use_example"] = True
 #    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]
