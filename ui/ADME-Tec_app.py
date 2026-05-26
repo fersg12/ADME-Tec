@@ -293,6 +293,7 @@ default_states = {
     #Datos de diego para cargar ejemplo
     "result_molecule_input": ([], None),
     "df_sim_matrix": None,
+    "use_loaded_values": False
 }
 def asignar_session():
     chembl_target = st.session_state['chembl_target']
@@ -319,7 +320,10 @@ def asignar_session():
     df_ref_plot = st.session_state.desirability_ref_df.copy()
     current_source = st.session_state["similarity_source"]
     df_query = st.session_state.input_df.copy()
-use_loaded_values = True # una vez que ya hayas guardado los datos cambia a True
+use_loaded_values = False
+if  "use_loaded_values" in st.session_state:
+    use_loaded_values = st.session_state["use_loaded_values"]
+# una vez que ya hayas guardado los datos cambia a True
 if use_loaded_values:
     load_session_state()
     asignar_session()
@@ -330,8 +334,8 @@ else:
 
 # ============================== SIDEBAR INPUTS ==============================
 with st.sidebar:
-    if use_loaded_values : st.text("Usando valores pre cargados")
-    st.button("Save Session State", on_click=save_session_state )
+    #if use_loaded_values : st.text("Usando valores pre cargados")
+    #st.button("Save Session State", on_click=save_session_state )
     st.title("Input Parameters")
 # ================= SIDEBAR =================
     if st.session_state["result_molecule_input"] == ([], None): 
@@ -380,12 +384,17 @@ if not use_loaded_values:
 
 # ================= LOGIC ========================
 if load_example_btn:
-    st.session_state["use_example"] = True
-    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]
-    st.session_state["example_chembl"] = "CHEMBL235"
-    st.session_state["example_atc"] = ""
-    st.session_state["example_design"] = "Hit identification"
-    st.session_state["auto_run"] = True
+    load_session_state()
+    asignar_session()
+    use_loaded_values = True
+    st.session_state["use_loaded_values"] = True
+
+#    st.session_state["use_example"] = True
+#    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]
+#    st.session_state["example_chembl"] = "CHEMBL235"
+#    st.session_state["example_atc"] = ""
+#    st.session_state["example_design"] = "Hit identification"
+#    st.session_state["auto_run"] = True
 
 # ================= Handle input =================
 

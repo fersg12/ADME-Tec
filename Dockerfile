@@ -1,15 +1,13 @@
-FROM continuumio/miniconda3:latest
+FROM continuumio/miniconda3:24.1.2-0
 
 WORKDIR /app
 
-COPY . /app
-COPY environment.yml /app/environment.yml
+COPY . .
 
 ENV CONDA_NO_PLUGINS=true
 
-RUN conda env create -f environment.yml
+RUN conda env create --solver=classic -f environment.yml
 
-# Usamos shell por defecto, así las variables de entorno se expanden
 SHELL ["/bin/bash", "-c"]
 
 EXPOSE 10000
