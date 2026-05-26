@@ -5,6 +5,8 @@ WORKDIR /app
 COPY . /app
 COPY environment.yml /app/environment.yml
 
+ENV CONDA_NO_PLUGINS=true
+
 RUN conda env create -f environment.yml
 
 # Usamos shell por defecto, así las variables de entorno se expanden
