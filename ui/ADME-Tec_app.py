@@ -269,9 +269,15 @@ def load_session_state(file_path = "session_state.pkl"):
         with open(file_path, 'rb') as f:
                 loaded_state = pickle.load(f)
                 print("##### LOADED SESSION ####")
+                values = []
                 for k, v in loaded_state.items():
-                    st.session_state[k] = v
-                    print(f"Loaded {k} into session state = {v}")
+                    if k != "FormSubmitter:select_adme_props_form-Confirm property selection" and k != "FormSubmitter:assign_adme_weights_form-Confirm weights":
+                        st.session_state[k] = v
+                        values.append(k)
+                        #print(f"Loaded {k} into session state = {v}")
+                values.sort()
+                for v in values:
+                    print(v)
     else:
         print("File not found.")
 default_states = {
@@ -285,11 +291,38 @@ default_states = {
     "adme_weights": {},
     "weights_confirmed": False,
     #Datos de diego para cargar ejemplo
-    "result_molecule_input": ([], None)
+    "result_molecule_input": ([], None),
+    "df_sim_matrix": None,
 }
-use_loaded_values = False # una vez que ya hayas guardado los datos cambia a True
+def asignar_session():
+    chembl_target = st.session_state['chembl_target']
+    atc_code = st.session_state['atc_code']
+    design_phase = st.session_state['design_phase']
+    target_location = st.session_state['target_location']
+    result = st.session_state["result_molecule_input"]
+    input_df = st.session_state.input_df
+    selected = st.session_state.selected_actions
+    df_input = st.session_state.input_df
+    df_met = st.session_state.metabolites_df
+    chembl_df = st.session_state.chembl_df
+    adme_chembl_df = st.session_state.adme_chembl_df
+    #atc_code = st.session_state.last_atc
+    #df_drugbank_atc = st.session_state.df_drugbank_atc
+    weights_tmp = st.session_state.adme_weights
+    input_adme_df = st.session_state.adme_df
+    selected_ui_props = st.session_state.get("selected_adme_props", [])
+    all_ui_weights = st.session_state.get("adme_weights", {})
+    weights_ready = st.session_state.get("weights_confirmed", False)
+    desirability_df = st.session_state.desirability_df
+    desirability_ref_df = st.session_state.desirability_ref_df
+    #desirability_geo_df = st.session_state.desirability_geo_df
+    df_ref_plot = st.session_state.desirability_ref_df.copy()
+    current_source = st.session_state["similarity_source"]
+    df_query = st.session_state.input_df.copy()
+use_loaded_values = True # una vez que ya hayas guardado los datos cambia a True
 if use_loaded_values:
     load_session_state()
+    asignar_session()
 else:
     for key, value in default_states.items():
         if key not in st.session_state:
@@ -302,12 +335,9 @@ with st.sidebar:
     st.title("Input Parameters")
 # ================= SIDEBAR =================
     if st.session_state["result_molecule_input"] == ([], None): 
-        print("use molecule input")
         result = molecule_input()
     else:
-        print("Use session state")
         result = st.session_state["result_molecule_input"]
-        print(result)
     chembl_target = st.text_input(
         "CHEMBL target ID",
         placeholder="e.g., CHEMBL235",
@@ -653,7 +683,7 @@ if (
 
         submitted_props = st.form_submit_button("Confirm property selection")
 
-    if submitted_props:
+    if submitted_props or use_loaded_values:
         if not selected_tmp:
             st.warning("Please select at least one ADME property.")
         else:
@@ -695,7 +725,7 @@ if (
 
             submitted_weights = st.form_submit_button("Confirm weights")
 
-        if submitted_weights:
+        if submitted_weights or use_loaded_values:
             st.session_state.adme_weights = weights_tmp
 
             st.session_state.weights_confirmed = True
@@ -783,20 +813,22 @@ if (
                 if is_hit_phase:
 
                     #st.markdown("#### Linear desirability (Hit identification)")
-
-                    desirability_df = compute_desirability(
-                        inputs=input_adme_df,
-                        ranges=ranges,
-                        weights=weights,
-                        config=filtered_config,
-                    )
-
-                    desirability_ref_df = compute_desirability(
-                        inputs=ref_df,
-                        ranges=ranges,
-                        weights=weights,
-                        config=filtered_config,
-                    )
+                    if not use_loaded_values: 
+                        desirability_df = compute_desirability(
+                            inputs=input_adme_df,
+                            ranges=ranges,
+                            weights=weights,
+                            config=filtered_config,
+                        )
+                    else: desirability_df =  st.session_state["desirability_df"]
+                    if not use_loaded_values: 
+                        desirability_ref_df = compute_desirability(
+                            inputs=ref_df,
+                            ranges=ranges,
+                            weights=weights,
+                            config=filtered_config,
+                        )
+                    else: desirability_ref_df =  st.session_state["desirability_ref_df"]
                     
                     st.session_state.desirability_df = desirability_df
                     st.session_state.desirability_ref_df = desirability_ref_df
@@ -804,7 +836,7 @@ if (
                 elif is_geo_phase:
 
                     #st.markdown("#### Geometric desirability (Lead/Candidate stage)")
-
+                    #En este caso por el ejemplo no usamos geo
                     desirability_geo_df = compute_desirability_geometric(
                         inputs=input_adme_df,
                         ranges=ranges,
@@ -1131,14 +1163,18 @@ if (
                 if len(df_query) > 1:
 
                     st.markdown("### Similarity Heatmap (Clustering)")  
+                    if not use_loaded_values:
+                        df_sim_matrix = plot_heatmap_similitud(
+                            df_query,
+                            df_proc,
+                            smiles_col="curated_smiles",
+                            id_col_query="ID",
+                            id_col_ref=id_col
+                        )
+                    else:
+                        df_sim_matrix = st.session_state["df_sim_matrix"]
+                        st.image("example/heatmap.png")
 
-                    df_sim_matrix = plot_heatmap_similitud(
-                        df_query,
-                        df_proc,
-                        smiles_col="curated_smiles",
-                        id_col_query="ID",
-                        id_col_ref=id_col
-                    )
                 # -------- pie de figura --------
                 st.markdown(
                     """
@@ -1303,3 +1339,4 @@ if (
 # ---------------------- Contact ----------------------
 st.markdown("---")
 st.markdown("© 2026 ADME-Tec · Developed by Nano]°[Biostructures RG · Tecnologico de Monterrey | [GitHub Repository](https://github.com/NanoBiostructuresRG/NanoBiostructuresRG.github.io)")
+
