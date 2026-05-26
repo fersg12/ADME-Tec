@@ -1,107 +1,345 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import percentileofscore
+import seaborn as sns
+
+from src.admet.adme_mappings import map_columns_perc
 
 
-def plot_radar_with_min_max_df(min_df, max_df, compuestos_df, title):
-    """
-    Generate a radar chart comparing compounds against reference minimum
-    and maximum property ranges.
+def plot_radar_with_min_max_df(
+    min_df,
+    max_df,
+    compuestos_df,
+    title
+):
 
-    Parameters:
-        min_df (pd.DataFrame): DataFrame containing minimum values per property.
-        max_df (pd.DataFrame): DataFrame containing maximum values per property.
-        compuestos_df (pd.DataFrame): One or more compounds to plot
-                                      (must share the same property columns).
-        title (str): Plot title.
+    # ==================================================
+    # CONFIG
+    # ==================================================
+    REVERSE_PATTERNS = {
+        "bbb": "BBB_Safe",
+        "herg": "Non_hERG",
+        "dili": "Non_DILI",
+        "substrate": "Non_Substrate",
+        "clearance": "Low_Clearance",
+    }
 
-    Returns:
-        fig (matplotlib.figure.Figure): Generated radar plot figure.
-    """
+    inverse_map = {
+        v: k for k, v in map_columns_perc.items()
+    }
 
-    # Extract property column names from compounds DataFrame
-    propiedades_claves = compuestos_df.columns.tolist()
+    # ==================================================
+    # COPY
+    # ==================================================
+    min_df = min_df.copy()
+    max_df = max_df.copy()
+    compuestos_df = compuestos_df.copy()
 
-    # Create human-readable labels (remove '_drugbank' and replace underscores)
+    # ==================================================
+    # TRANSFORM
+    # ==================================================
+    def transform_df(df):
+
+        new_df = pd.DataFrame(index=df.index)
+
+        for col in df.columns:
+
+            col_lower = col.lower()
+            replaced = False
+
+            for pattern in REVERSE_PATTERNS:
+
+                if pattern in col_lower:
+                    new_df[col] = 100 - df[col]
+                    replaced = True
+                    break
+
+            if not replaced:
+                new_df[col] = df[col]
+
+        return new_df
+
+    min_df = transform_df(min_df)
+    max_df = transform_df(max_df)
+    compuestos_df = transform_df(compuestos_df)
+
+    # ==================================================
+    # COMMON COLUMNS
+    # ==================================================
+    propiedades_claves = [
+        col for col in compuestos_df.columns
+        if col in min_df.columns and col in max_df.columns
+    ]
+
+    # ==================================================
+    # LABELS
+    # ==================================================
+    def get_readable_name(col):
+
+        base_name = inverse_map.get(col, col)
+        name_lower = base_name.lower()
+
+        if "bbb" in name_lower:
+            return "BBB Safe"
+
+        elif "herg" in name_lower:
+            return "Non-hERG"
+
+        elif "dili" in name_lower:
+            return "Non-DILI"
+
+        elif "clearance" in name_lower:
+            return "Low Clearance"
+
+        elif "substrate" in name_lower:
+            return "Non-" + base_name.replace(
+                " Substrate",
+                ""
+            )
+
+        else:
+            return base_name
+
     propiedades_legibles = [
-        col.split('_drugbank')[0].replace('_', ' ')
+        get_readable_name(col)
         for col in propiedades_claves
     ]
 
-    # Extract minimum and maximum reference values
-    minimos = min_df[propiedades_claves].values[0].tolist()
-    maximos = max_df[propiedades_claves].values[0].tolist()
+    # ==================================================
+    # VALUES
+    # ==================================================
+    minimos = np.array(
+        min_df[propiedades_claves]
+        .iloc[0]
+        .astype(float)
+        .tolist()
+    )
 
-    # Compute angular coordinates for radar chart (one per property)
+    maximos = np.array(
+        max_df[propiedades_claves]
+        .iloc[0]
+        .astype(float)
+        .tolist()
+    )
+
+    # ==================================================
+    # FIX MIN/MAX
+    # ==================================================
+    mins = np.minimum(minimos, maximos)
+    maxs = np.maximum(minimos, maximos)
+
+    # ==================================================
+    # ANGLES
+    # ==================================================
     N = len(propiedades_claves)
-    angles = [n / float(N) * 2 * np.pi for n in range(N)]
 
-    # Close the circular plot by repeating the first angle and values
-    angles += angles[:1]
-    minimos += minimos[:1]
-    maximos += maximos[:1]
+    angles = np.linspace(
+        0,
+        2 * np.pi,
+        N,
+        endpoint=False
+    )
 
-    # Create polar subplot
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-
-    # Set property labels around the circle
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(propiedades_legibles, fontsize=10)
-
-    # Adjust radial label position
-    ax.set_rlabel_position(0)
-    ax.tick_params(pad=15)
-
-    # Improve label alignment depending on position in the circle
-    for label, angle in zip(ax.get_xticklabels(), angles):
-        label.set_horizontalalignment(
-            'right' if np.pi / 2 <= angle <= 3 * np.pi / 2 else 'left'
-        )
-
-    # Fill the background area up to maximum values
-    ax.fill(angles, maximos, color='white', alpha=0.4)
-
-    # Fill area between minimum and maximum values
-    ax.fill_between(
+    # cerrar polígonos
+    angles_closed = np.concatenate([
         angles,
-        minimos,
-        maximos,
+        [angles[0]]
+    ])
+
+    mins_closed = np.concatenate([
+        mins,
+        [mins[0]]
+    ])
+
+    maxs_closed = np.concatenate([
+        maxs,
+        [maxs[0]]
+    ])
+
+    # ==================================================
+    # FIGURE
+    # ==================================================
+    fig, ax = plt.subplots(
+        figsize=(8, 8),
+        subplot_kw=dict(polar=True)
+    )
+
+    # ==================================================
+    # AXIS
+    # ==================================================
+    ax.set_xticks(angles)
+
+    ax.set_xticklabels(
+        propiedades_legibles,
+        fontsize=11
+    )
+
+    ax.set_ylim(0, 100)
+
+    ax.tick_params(
+        axis='x',
+        pad=15
+    )
+
+    # ==================================================
+    # LABEL ALIGNMENT
+    # ==================================================
+    for label, angle in zip(
+        ax.get_xticklabels(),
+        angles
+    ):
+
+        if np.pi / 2 <= angle <= 3 * np.pi / 2:
+            label.set_horizontalalignment('right')
+
+        else:
+            label.set_horizontalalignment('left')
+
+    # ==================================================
+    # MIN-MAX BAND
+    # ==================================================
+    angles_band = np.concatenate([
+        angles_closed,
+        angles_closed[::-1]
+    ])
+
+    values_band = np.concatenate([
+        maxs_closed,
+        mins_closed[::-1]
+    ])
+
+    ax.fill(
+        angles_band,
+        values_band,
         color='skyblue',
-        alpha=0.4,
+        alpha=0.35,
         label='Min-Max Range'
     )
 
-    # Plot each compound on the radar chart
-    for i, (_, row) in enumerate(compuestos_df.iterrows()):
-        label = f"Compound {i+1}"
+    # ==================================================
+    # BORDERS
+    # ==================================================
+    ax.plot(
+        angles_closed,
+        maxs_closed,
+        color='skyblue',
+        linewidth=1.5,
+        alpha=0.8
+    )
 
-        # Extract compound property values
-        valores = row[propiedades_claves].tolist()
+    ax.plot(
+        angles_closed,
+        mins_closed,
+        color='skyblue',
+        linewidth=1.5,
+        alpha=0.8
+    )
 
-        # Close the circle by repeating first value
-        valores += [valores[0]]
+    # ==================================================
+    # COMPOUNDS
+    # ==================================================
+    for i, (_, row) in enumerate(
+        compuestos_df.iterrows()
+    ):
 
-        label = f"Compound {i+1}"
+        valores = np.array(
+            row[propiedades_claves]
+            .astype(float)
+            .tolist()
+        )
 
-        # Plot compound line
-        ax.plot(angles, valores, label=label, linewidth=2)
+        valores_closed = np.concatenate([
+            valores,
+            [valores[0]]
+        ])
 
-        # Add markers at each property point
-        ax.scatter(angles, valores, s=40)
+        ax.plot(
+            angles_closed,
+            valores_closed,
+            linewidth=3,
+            label=f"Compound {i+1}"
+        )
 
-    # Add title
-    plt.title(title, size=18, y=1.1)
+        ax.scatter(
+            angles_closed,
+            valores_closed,
+            s=50,
+            zorder=10
+        )
 
-    # Add legend below the plot
+    # ==================================================
+    # GRID
+    # ==================================================
+    ax.grid(alpha=0.4)
+
+    # ==================================================
+    # TITLE
+    # ==================================================
+    plt.title(
+        title,
+        fontsize=22,
+        y=1.08
+    )
+
+    # ==================================================
+    # LEGEND
+    # ==================================================
     ax.legend(
         loc='lower center',
-        bbox_to_anchor=(0.5, -0.20),
+        bbox_to_anchor=(0.5, -0.18),
         ncol=2,
         fontsize=11
     )
 
-    # Adjust layout spacing
-    plt.tight_layout(pad=3.0)
+    plt.tight_layout()
+
+    return fig
+
+
+
+def plot_desirability_heatmap(df_des):
+
+    # Seleccionar columnas que empiezan con "desirability"
+    desirability_cols = [col for col in df_des.columns if col.startswith("desirability")]
+
+    # Asegurar que existe columna ID (ajusta si se llama diferente)
+    id_col = "ID" if "ID" in df_des.columns else df_des.columns[0]
+
+    # Subset del dataframe
+    df_heatmap = df_des[[id_col] + desirability_cols].copy()
+
+    # Usar ID como índice
+    df_heatmap.set_index(id_col, inplace=True)
+
+    return df_heatmap
+
+def render_heatmap(df_heatmap, title="Desirability Heatmap"):
+
+    n_rows = df_heatmap.shape[0]
+
+    # Ajusta altura dinámicamente (clave para 68 moléculas)
+    fig_height = max(8, n_rows * 0.25)
+
+    fig, ax = plt.subplots(figsize=(10, fig_height))
+
+    sns.heatmap(
+        df_heatmap,
+        cmap="RdYlGn",
+        annot=False,
+        vmin=0,
+        vmax=1,
+        linewidths=0.2,
+        linecolor="gray",
+        cbar_kws={"label": "Desirability Score"},
+        ax=ax
+    )
+
+    ax.set_title(title)
+    ax.set_xlabel("Properties")
+    ax.set_ylabel("")
+
+    ax.set_yticklabels(ax.get_yticklabels(), fontsize=5)
+
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right", fontsize=8)
 
     return fig

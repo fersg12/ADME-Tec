@@ -46,7 +46,7 @@ from src.utils.inputs import molecule_input
 from src.utils.visualization import show_molecules
 from src.target.chembl_utils import get_mechanism_metadata, retrieve_chembl_data
 from src.chemistry.standardizer_utils import process_molecule_row
-from src.admet.radar_plot import plot_radar_with_min_max_df
+from src.admet.radar_plot import plot_radar_with_min_max_df, plot_desirability_heatmap, render_heatmap
 from src.admet.adme_mappings import categories_adme, map_columns_perc, map_columns
 from src.target.ATC_utils import get_drugbank_by_atc
 from src.admet.GloryX import calcular_metabolitos, visualizar_metabolitos
@@ -1231,17 +1231,17 @@ if (
 
                         compound_name = str(row.get("ID", f"Compound {i+1}"))
 
-                        col1, col2 = st.columns([1, 3])
+                        col1, col2 = st.columns([1, 1.8])
 
                         # ==================================================
-                        # COLUMNA 1 → MOLÉCULA
+                        # COLUMN 1 → MOL IMAGE 
                         # ==================================================
                         with col1:
                             if "smiles" in input_adme_df.columns:
                                 mol = Chem.MolFromSmiles(row["smiles"])
                                 if mol:
                                     st.image(
-                                        Chem.Draw.MolToImage(mol, size=(220, 220)),
+                                        Chem.Draw.MolToImage(mol, size=(300, 300)),
                                         caption=compound_name
                                     )
                                 else:
@@ -1250,7 +1250,7 @@ if (
                                 st.write(compound_name)
 
                         # ==================================================
-                        # COLUMNA 2 → RADAR
+                        # COLUMN 2 → RADAR
                         # ==================================================
                         with col2:
 
@@ -1260,12 +1260,31 @@ if (
                                 min_df=min_df,
                                 max_df=max_df,
                                 compuestos_df=comp_df,
-                                title=compound_name
+                                title= compound_name 
                             )
 
                             st.pyplot(fig, clear_figure=True)
+        
+        
+            if df_des is not None:
+
+                if "desirability_df" in st.session_state and df_des is st.session_state.desirability_df:
+                    st.markdown("#### Linear desirability results (Hit identification)")
+
+                elif "desirability_geo_df" in st.session_state and df_des is st.session_state.desirability_geo_df:
+                    st.markdown("#### Geometric desirability results (Lead/Candidate stage)")
+
+                st.dataframe(df_des, use_container_width=True)
+
+                # ===== Heatmap =====
+                df_heatmap = plot_desirability_heatmap(df_des)
+                fig = render_heatmap(df_heatmap)
+
+                st.pyplot(fig)
+        
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
+
 
 
         
