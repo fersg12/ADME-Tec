@@ -54,6 +54,66 @@ from src.chemistry.similarity import calcular_similitud, plot_heatmap_similitud,
 from src.admet.ranges_utils import prepare_ranges_from_reference
 from src.admet.desirability_score import normalize_weights, compute_desirability, compute_desirability_geometric
 from src.admet.desirability_conf import PROPERTY_CONFIG 
+from pathlib import Path
+
+# Robust TOML loader: prefer stdlib tomllib (Python 3.11+), fall back to the 'toml' package.
+_load_toml = None
+try:
+    import tomllib as _tomllib  # type: ignore
+    def _load_toml(path):
+        with open(path, "rb") as f:
+            return _tomllib.load(f)
+except Exception:
+    try:
+        import toml as _toml  # type: ignore
+        def _load_toml(path):
+            return _toml.load(str(path))
+    except Exception:
+        _load_toml = None
+
+config_path = Path(__file__).resolve().parents[1] / ".streamlit" / "config.toml"
+
+config = {}
+if _load_toml is None:
+    print("Warning: no TOML loader available (neither tomllib nor toml). Skipping .streamlit/config.toml parsing.")
+else:
+    try:
+        if config_path.exists():
+            config = _load_toml(config_path)
+        else:
+            print(f"Warning: .streamlit/config.toml not found at {config_path}")
+    except Exception as e:
+        print(f"Warning: failed to load {config_path}: {e}")
+
+# If a [theme] section exists in config.toml, apply a minimal CSS fallback so
+# the app visually matches the configured theme even when Streamlit itself
+# didn't pick up the file (e.g., when running the script directly).
+try:
+    theme = config.get("theme", {}) if isinstance(config, dict) else {}
+    if theme:
+        css_rules = []
+        bg = theme.get("backgroundColor")
+        if bg:
+            css_rules.append(f".stApp {{ background-color: {bg} !important; }}")
+        sec_bg = theme.get("secondaryBackgroundColor")
+        if sec_bg:
+            css_rules.append(f".stSidebar {{ background-color: {sec_bg} !important; }}")
+        text = theme.get("textColor")
+        if text:
+            css_rules.append(f".stApp, .stApp * {{ color: {text} !important; }}")
+        primary = theme.get("primaryColor")
+        if primary:
+            # Attempt to colour major accents (buttons, links)
+            css_rules.append(f".stButton>button, a {{ background-color: {primary} !important; border-color: {primary} !important; }}")
+        if css_rules:
+            # Do not call Streamlit APIs before set_page_config; store CSS to apply later
+            THEME_CSS = "<style>" + "\n".join(css_rules) + "</style>"
+        else:
+            THEME_CSS = None
+except Exception as _e:
+    # Silently ignore any styling errors to avoid breaking the app UI
+    THEME_CSS = None
+    print(f"Warning: failed to prepare theme CSS from {config_path}: {_e}")
 
 # ========================= ADMET MODEL LOADING ==========================
 @st.cache_resource
@@ -70,48 +130,25 @@ def safe_torch_load(*args, **kwargs):
 torch.load = safe_torch_load
 
 # ============================= PAGE CONFIG ==============================
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-ICON_PATH = PROJECT_ROOT / "src" / "assets" / "Banner.png"
-
-icon = Image.open(ICON_PATH)
+logo = Image.open("src/assets/logo.png")
 
 st.set_page_config(
-    page_title="ADME-TEC",
-    page_icon=icon,
-    layout="wide",
-    initial_sidebar_state="expanded",
+    page_title="ADMETec",
+    page_icon=logo,
+    layout="wide"
 )
 
-def icon_to_base64(image):
-    from io import BytesIO
-    import base64
-    buffered = BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode()
+col_logo, col_titulo = st.columns([1, 8], gap="medium")
 
+with col_logo:
+    st.image("src/assets/logo.png", use_container_width=True)
 
-# ============================== UI STYLING ==============================
+with col_titulo:
+    st.title("ADMETec")
+    st.caption("Context-aware ADME analysis and compound prioritization for drug discovery")
 
-banner_url = "https://tec.mx/es/investigacion/instituto-de-investigacion-sobre-obesidad"
-
-st.markdown(
-    f"""
-    <a href="{banner_url}" target="_blank">
-        <img src="data:image/png;base64,{icon_to_base64(icon)}"
-             style="width:100%; height:auto; border-radius:10px;">
-    </a>
-    """,
-    unsafe_allow_html=True
-)
-
-st.title("ADME-TEC")
-
-st.markdown(
-    "<p style='color:#64748B; font-size:16px;'>Context-aware ADME prioritization</p>",
-    unsafe_allow_html=True
-)
 
 # ==============================
 # REQUIRED INPUT (EXPANDER)
@@ -253,11 +290,8 @@ with st.expander("⚙️ Functionalities", expanded=False):
         </div>
         """, unsafe_allow_html=True)
 
-
 # ============================= SESSION STATE =============================
 # Initialize persistent variables used across Streamlit reruns.
-
-
 
 def save_session_state(file_path= "session_state.pkl"):
     with open(file_path, 'wb') as f:
@@ -387,15 +421,10 @@ if load_example_btn:
     load_session_state()
     asignar_session()
     use_loaded_values = True
+    # mark that we are intentionally using the provided example dataset
     st.session_state["use_loaded_values"] = True
+    st.session_state["use_example"] = True
     st.rerun()
-
-#    st.session_state["use_example"] = True
-#    st.session_state["example_smiles"] = ["CC(C)NCC(O)COc1ccccc1"]
-#    st.session_state["example_chembl"] = "CHEMBL235"
-#    st.session_state["example_atc"] = ""
-#    st.session_state["example_design"] = "Hit identification"
-#    st.session_state["auto_run"] = True
 
 # ================= Handle input =================
 
@@ -1317,21 +1346,22 @@ if (
                         # ==================================================
                         with col1:
                             name = "comp_" + (compound_name.replace('.', '_')) + ".jpg"
-                            if not use_loaded_values and os.path.exists(f"example/{name}"):
+                            # Show example images only when in example mode
+                            if st.session_state.get("use_example", False) and os.path.exists(f"example/{name}"):
+                                st.image(f"example/{name}")
+                            else:
+                                # Generate molecule image from SMILES if available
                                 if "smiles" in input_adme_df.columns:
                                     mol = Chem.MolFromSmiles(row["smiles"])
                                     if mol:
                                         st.image(
-                                            Chem.Draw.MolToImage(mol, size=(300, 300)),
+                                            Chem.Draw.MolToImage(mol, size=(500, 500)),
                                             caption=compound_name
                                         )
                                     else:
                                         st.write(compound_name)
                                 else:
                                     st.write(compound_name)
-                            else:
-                                #print("No dibujando")
-                                st.image(f"example/{name}") 
 
                         # ==================================================
                         # COLUMN 2 → RADAR
@@ -1340,18 +1370,21 @@ if (
                             name = (compound_name.replace('.', '_')) + ".png"
                             comp_df = pd.DataFrame([row[selected_cols]])
 
-                            if not use_loaded_values and os.path.exists(f"example/{name}"):
-                                fig = plot_radar_with_min_max_df(
-                                    min_df=min_df,
-                                    max_df=max_df,
-                                    compuestos_df=comp_df,
-                                    title=compound_name
-                                )
-
-                                st.pyplot(fig, clear_figure=True)
+                            # If example mode is active and example image exists, show it
+                            if st.session_state.get("use_example", False) and os.path.exists(f"example/{name}"):
+                                st.image(f"example/{name}")
                             else:
-                                #print("No dibujando")
-                                st.image(f"example/{name}") 
+                                # Otherwise generate the radar figure from the computed ADME properties
+                                try:
+                                    fig = plot_radar_with_min_max_df(
+                                        min_df=min_df,
+                                        max_df=max_df,
+                                        compuestos_df=comp_df,
+                                        title=compound_name
+                                    )
+                                    st.pyplot(fig, clear_figure=True)
+                                except Exception as _e:
+                                    st.warning(f"Failed to generate radar plot for {compound_name}: {_e}")
         
         
             if df_des is not None:
@@ -1364,14 +1397,13 @@ if (
 
                 st.dataframe(df_des, use_container_width=True)
 
-                if not use_loaded_values:
+                if st.session_state.get("use_example", False) and os.path.exists("example/Linear_desirability_heatmap.png"):
+                    st.image("example/Linear_desirability_heatmap.png")
+                else:
                     # ===== Heatmap =====
                     df_heatmap = plot_desirability_heatmap(df_des)
                     fig = render_heatmap(df_heatmap)
-
                     st.pyplot(fig)
-                else:
-                    st.image("example/Linear_desirability_heatmap.png")
         
         else:
             st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
