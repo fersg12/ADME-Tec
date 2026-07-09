@@ -8,14 +8,9 @@ This module implements an interactive web interface for:
 - ADME prediction using ADMET‑AI
 - ChEMBL / DrugBank reference retrieval
 - Metabolite prediction (GLORYx)
-- Chemical similarity analysis
 - Desirability‑based compound prioritization
-- ADME radar visualization
-
-
-The code is organized in logical sections following the Streamlit
-execution flow to ensure clarity and reproducibility.
-
+- Chemical similarity analysis
+- ADMET radar visualization
 
 Author: Fernanda Saldivar 
 """
@@ -35,7 +30,7 @@ from rdkit import Chem
 import plotly.graph_objects as go
 import numpy as np 
 import pickle
-import time #Luego lo quitamos, es solo por render
+import time 
 
 # --- Add project root to Python path ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -55,6 +50,7 @@ from src.admet.ranges_utils import prepare_ranges_from_reference
 from src.admet.desirability_score import normalize_weights, compute_desirability, compute_desirability_geometric
 from src.admet.desirability_conf import PROPERTY_CONFIG 
 from pathlib import Path
+from src.admet.Sensitive_test import perturb_weights_sensitivity
 
 # Robust TOML loader: prefer stdlib tomllib (Python 3.11+), fall back to the 'toml' package.
 _load_toml = None
@@ -203,7 +199,7 @@ with st.expander("⚙️ Functionalities", expanded=False):
 
     <style>
     .card {
-        background-color: #F8FAFC;
+        background-color: #e8f1faff;
         border: 1px solid #E2E8F0;
         padding: 18px;
         border-radius: 12px;
@@ -1116,7 +1112,20 @@ if (
 
                     st.dataframe(df_des, use_container_width=True)
 
-            #============================= CHEMICAL SIMILARITY =============================
+                    if st.session_state.get("use_example", False) and os.path.exists("example/Linear_desirability_heatmap.png"):
+                    
+                        st.image("example/Linear_desirability_heatmap.png")
+                    
+                    else:
+                        # ===== Heatmap =====
+                        df_heatmap = plot_desirability_heatmap(df_des)
+                        fig = render_heatmap(df_heatmap)
+                        st.pyplot(fig)
+        
+            else:
+                st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
+
+            #========================== CHEMICAL SIMILARITY =============================
 
             #=========== Reference dataset selection (ChEMBL or DrugBank ATC)  ===========
             # This block determines which reference chemical dataset
@@ -1387,31 +1396,20 @@ if (
                                     st.warning(f"Failed to generate radar plot for {compound_name}: {_e}")
         
         
-            if df_des is not None:
+        # ============================================================
+        # WEIGHT PERTURBATION DEBUG (FOR TESTING PURPOSES)
+        st.markdown("### Weight perturbation debug")
 
-                if "desirability_df" in st.session_state and df_des is st.session_state.desirability_df:
-                    st.markdown("#### Linear desirability results (Hit identification)")
+        if st.button("Run sensitivity test"):
+            perturbed_sets, debug_df = perturb_weights_sensitivity(
+                filtered_weights,
+                perturbation=0.1
+            )
 
-                elif "desirability_geo_df" in st.session_state and df_des is st.session_state.desirability_geo_df:
-                    st.markdown("#### Geometric desirability results (Lead/Candidate stage)")
+            st.write("debug_df shape:", debug_df.shape)
+            st.dataframe(debug_df)
 
-                st.dataframe(df_des, use_container_width=True)
-
-                if st.session_state.get("use_example", False) and os.path.exists("example/Linear_desirability_heatmap.png"):
-                    st.image("example/Linear_desirability_heatmap.png")
-                else:
-                    # ===== Heatmap =====
-                    df_heatmap = plot_desirability_heatmap(df_des)
-                    fig = render_heatmap(df_heatmap)
-                    st.pyplot(fig)
-        
-        else:
-            st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
-
-
-
-        
-# ---------------------- Contact ----------------------
-st.markdown("---")
-st.markdown("© 2026 ADME-Tec · Developed by Nano]°[Biostructures RG · Tecnologico de Monterrey | [GitHub Repository](https://github.com/NanoBiostructuresRG/NanoBiostructuresRG.github.io)")
+        # ---------------------- Contact ----------------------
+        st.markdown("---")
+        st.markdown("© 2026 ADME-Tec · Developed by Nano]°[Biostructures RG · Tecnologico de Monterrey | [GitHub Repository](https://github.com/NanoBiostructuresRG/NanoBiostructuresRG.github.io)")
 

@@ -8,7 +8,7 @@ st.title("About ADMETEC")
 st.markdown("""
 <style>
 .card {
-    background-color: #F1F5F9;  /* gris claro */
+    background-color: #e8f1faff;  
     padding: 22px;
     border-radius: 14px;
     margin-bottom: 16px;
