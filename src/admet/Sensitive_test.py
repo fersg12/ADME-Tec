@@ -10,18 +10,6 @@ from .desirability_score import (
     compute_desirability_geometric,
 )
 
-
-def _safe_spearman(a: pd.Series, b: pd.Series) -> float:
-    """Compute Spearman correlation robustly; return 0 if undefined."""
-    try:
-        rho, _ = spearmanr(a, b)
-        if np.isnan(rho):
-            return 0.0
-        return float(rho)
-    except Exception:
-        return 0.0
-
-
 def perturb_weights_sensitivity(weights, perturbation=0.1):
     import pandas as pd
 
@@ -58,3 +46,84 @@ def perturb_weights_sensitivity(weights, perturbation=0.1):
             debug_rows.append(row)
 
     return perturbed_sets, pd.DataFrame(debug_rows)
+
+
+def _safe_spearman(a: pd.Series, b: pd.Series) -> float:
+    """Compute Spearman correlation robustly; return 0 if undefined."""
+    try:
+        rho, _ = spearmanr(a, b)
+        if np.isnan(rho):
+            return 0.0
+        return float(rho)
+    except Exception:
+        return 0.0
+
+
+def recompute_desirability_scores(
+    input_df: pd.DataFrame,
+    ref_df: pd.DataFrame,
+    weights: Dict[str, float],
+    selected_props: List[str],
+    property_config: Dict[str, Any],
+    design_phase: str,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+    # -----------------------------
+    # Normalize weights
+    # -----------------------------
+    weights = normalize_weights(weights)
+
+    # -----------------------------
+    # Filter config
+    # -----------------------------
+    filtered_config = {
+        k: v
+        for k, v in property_config.items()
+        if k in selected_props
+    }
+
+    # -----------------------------
+    # Build ranges from reference
+    # -----------------------------
+    ranges = prepare_ranges_from_reference(ref_df, filtered_config)
+
+    # -----------------------------
+    # Select method
+    # -----------------------------
+    is_hit_phase = design_phase == "Hit identification"
+    is_geo_phase = design_phase in ["Lead optimization", "Candidate selection"]
+
+    if is_hit_phase:
+        input_scores = compute_desirability(
+            inputs=input_df,
+            ranges=ranges,
+            weights=weights,
+            config=filtered_config,
+        )
+
+        ref_scores = compute_desirability(
+            inputs=ref_df,
+            ranges=ranges,
+            weights=weights,
+            config=filtered_config,
+        )
+
+    elif is_geo_phase:
+        input_scores = compute_desirability_geometric(
+            inputs=input_df,
+            ranges=ranges,
+            weights=weights,
+            config=filtered_config,
+        )
+
+        ref_scores = compute_desirability_geometric(
+            inputs=ref_df,
+            ranges=ranges,
+            weights=weights,
+            config=filtered_config,
+        )
+
+    else:
+        raise ValueError(f"Unsupported design phase: {design_phase}")
+
+    return input_scores, ref_scores
