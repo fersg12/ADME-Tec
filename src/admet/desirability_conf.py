@@ -253,10 +253,16 @@ PROPERTY_CONFIG = {
     },
 
     "Half_Life_Obach": {
-        "family": "increasing",
-        "params": {"a": "a_Half_Life_Obach", "b": "b_Half_Life_Obach"},
-        "weight": "Half_Life_Obach",
-        "uncertainty": "usigmoidal"
+        "family": "trapezoidal",
+        "params": {
+            "a": "Half_Life_Obach[0]",
+            "b": "Half_Life_Obach[1]",
+            "c": "Half_Life_Obach[2]",
+            "d": "Half_Life_Obach[3]",
+            "floor": 0.05
+        },
+        "weight": "tpsa",
+        "uncertainty": "utrapezoidal"
     },
 
     "Lipophilicity_AstraZeneca": {

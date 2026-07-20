@@ -5,7 +5,7 @@ ADME‑TEC Streamlit Application
 
 
 This module implements an interactive web interface for:
-- ADME prediction using ADMET‑AI
+- ADMET prediction using ADMET‑AI
 - ChEMBL / DrugBank reference retrieval
 - Metabolite prediction (GLORYx)
 - Desirability‑based compound prioritization
@@ -281,7 +281,7 @@ with st.expander("⚙️ Functionalities", expanded=False):
                 Expert modulation
             </div>
             <div class="text">
-                Select and weight ADME properties based on project needs.
+                Select and weight ADMET properties based on project needs.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -449,7 +449,12 @@ if st.session_state.get("use_example", False):
 
 # ================= DISPLAY NORMAL =================
 elif smiles_list and st.session_state.get("show_mols", True):
-    show_molecules(smiles_list)
+    ids = None
+
+    if input_df is not None and "ID" in input_df.columns:
+        ids = input_df["ID"].astype(str).tolist()
+
+    show_molecules(smiles_list, ids=ids)
     
 
 # =========================================================
@@ -505,7 +510,7 @@ if smiles_list:
             if input_df is not None and "ID" in input_df.columns:
                 st.session_state.adme_df["ID"] = input_df["ID"].values
 
-    st.markdown("### ADME Properties of Input Molecules")
+    st.markdown("### ADMET Properties of Input Molecules")
     st.dataframe(st.session_state.adme_df, use_container_width=True)
 
 
@@ -570,7 +575,7 @@ if smiles_list:
         ):
 
         try:
-            with st.spinner("Calculating ADME for ChEMBL compounds..."):
+            with st.spinner("Calculating ADMET for ChEMBL compounds..."):
 
                     chembl_df, adme_chembl_df = retrieve_chembl_data(
                     chembl_target,
