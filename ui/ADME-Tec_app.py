@@ -367,6 +367,7 @@ with st.sidebar:
     #if use_loaded_values : st.text("Usando valores pre cargados")
     #st.button("Save Session State", on_click=save_session_state )
     st.title("Input Parameters")
+
 # ================= SIDEBAR =================
     if st.session_state["result_molecule_input"] == ([], None): 
         result = molecule_input()
@@ -495,10 +496,10 @@ if chembl_target:
                     st.session_state.selected_actions = selected
 
 
-# ============================== ADME PREDICTION ==============================
+# ============================== ADMET PREDICTION ==============================
 if smiles_list:
     if st.session_state.adme_df.empty:
-        with st.spinner("Calculating ADME for input molecules..."):
+        with st.spinner("Calculating ADMET for input molecules..."):
             model = load_admet_model()
             adme_results = model.predict(smiles_list)
 
@@ -686,7 +687,7 @@ elif (
     ref_label = "DrugBank (ATC) compounds"
 
 # ------------------------------------------------------------
-# Display ADME profiling only if input + reference exist
+# Display ADMET profiling only if input + reference exist
 # ------------------------------------------------------------
 if (
     "adme_df" in st.session_state
@@ -1035,9 +1036,21 @@ if (
                     # ------------------------------
                     def get_name(row):
                         if row["Dataset"] == "Reference":
-                            return str(row.get("molecule_name", row.name))
+                            if pd.notna(row.get("name")):
+                                return str(row["name"])
+                            elif pd.notna(row.get("molecule_name")):
+                                return str(row["molecule_name"])
+                            elif pd.notna(row.get("ID")):
+                                return str(row["ID"])
+                            else:
+                                return str(row.name)
+
+                        # Input compounds
+                        if pd.notna(row.get("ID")):
+                            return str(row["ID"])
                         else:
-                            return str(row.get("ID", row.name))
+                            return str(row.name)
+
 
                     df_all["Compound_name"] = df_all.apply(get_name, axis=1)
 
