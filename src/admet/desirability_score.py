@@ -35,7 +35,7 @@ def resolve_params(param_map, ranges):
 
 
 # ============================================================
-# Desirability functions (UNCHANGED logic)
+# Desirability functions 
 # ============================================================
 
 def compute_desirability(

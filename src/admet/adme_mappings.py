@@ -2,7 +2,7 @@
 categories_adme = {
     "Molecular Properties": ["Molecular Weight", "HBA", "HBD", "TPSA", "LogP", "Stereo Centers", "Solubility"],
     "Absorption": ["Caco-2", "Bioavailability", "HIA", "PAMPA", "Pgp"],
-    "Distribution": ["BBB penetration", "VDss", "PPBR"],
+    "Distribution": ["BBB penetration","BBB safe", "VDss", "PPBR"],
     "Metabolism": ["CYP1A2 inhibitor", "CYP2C19 inhibitor", "CYP2C9 inhibitor", "CYP2D6 inhibitor", "CYP3A4 inhibitor", "CYP2C9 Substrate", "CYP2D6 Substrate", "CYP3A4 Substrate"],
     "Excretion": ["Clearance (Microsome)", "Clearance (Hepatocyte)", "Half Life"],
     "Toxicity": ["AMES", "DILI", "Carcinogenicity", "hERG", "Skin Reaction", "LD50", "ClinTox"], 
@@ -25,6 +25,7 @@ map_columns = {
     "PAMPA": "PAMPA_NCATS",
     "Pgp": "Pgp_Broccatelli",
     "BBB penetration": "BBB_Martins",
+    "BBB safe": "BBB_Martins_Safe",
     "VDss": "VDss_Lombardo",
     "PPBR": "PPBR_AZ",
     "CYP1A2 inhibitor": "CYP1A2_Veith",

@@ -68,10 +68,10 @@ PROPERTY_CONFIG = {
         "uncertainty": "ugaussian"
     },
 
-    "hydrogen_bond_donnors": {
+    "hydrogen_bond_donors": {
         "family": "gaussian",
-        "params": {"mu": "mu_hydrogen_bond_donnors", "sigma": "sigma_hydrogen_bond_donnors"},
-        "weight": "hydrogen_bond_donnors",
+        "params": {"mu": "mu_hydrogen_bond_donors", "sigma": "sigma_hydrogen_bond_donors"},
+        "weight": "hydrogen_bond_donors",
         "uncertainty": "ugaussian"
     },
 
@@ -98,6 +98,12 @@ PROPERTY_CONFIG = {
     # =========================
     # Absorption & Distribution
     # =========================
+    "Bioavailability_Ma": {
+        "family": "increasing",
+        "params": {"a": "a_Bioavailability_Ma", "b": "b_Bioavailability_Ma"},
+        "weight": "Bioavailability_Ma",
+        "uncertainty": "usigmoidal"
+    },
 
     "HIA_Hou": {
         "family": "increasing",
@@ -106,6 +112,26 @@ PROPERTY_CONFIG = {
         "uncertainty": "usigmoidal"
     },
 
+    "BBB_Martins": {
+        "family": "increasing",
+        "params": {
+            "a": "a_BBB_Martins",
+            "b": "b_BBB_Martins"
+        },
+        "weight": "BBB_Martins",
+        "uncertainty": "usigmoidal"
+    },
+
+    "BBB_Martins_Safe": {
+        "family": "decreasing",
+        "params": {
+            "a": "a_BBB_Martins",
+            "b": "b_BBB_Martins"
+        },
+        "weight": "BBB_Martins_Safe",
+        "uncertainty": "usigmoidal"
+    },
+    
     "Caco2_Wang": {
         "family": "increasing",
         "params": {"a": "a_Caco2_Wang", "b": "b_Caco2_Wang"},
@@ -175,7 +201,7 @@ PROPERTY_CONFIG = {
 
     "CYP2C9_Substrate_CarbonMangels": {
         "family": "decreasing",
-        "params": {"a": "a_CCYP2C9_Substrate_CarbonMangels", "b": "b_CYP2C9_Substrate_CarbonMangels"},
+        "params": {"a": "a_CYP2C9_Substrate_CarbonMangels", "b": "b_CYP2C9_Substrate_CarbonMangels"},
         "weight": "CYP2C9_Substrate_CarbonMangels",
         "uncertainty": "usigmoidal"
     },

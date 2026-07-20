@@ -143,7 +143,7 @@ with col_logo:
 
 with col_titulo:
     st.title("ADMETec")
-    st.caption("Context-aware ADME analysis and compound prioritization for drug discovery")
+    st.caption("Context-aware ADMET analysis and compound prioritization for drug discovery")
 
 
 # ==============================
@@ -559,9 +559,9 @@ if smiles_list:
         visualizar_metabolitos(st.session_state.metabolites_df)
 
 # ==================== REFERENCE RETRIEVAL =======================
-#Retrieve ChEMBL or DrugBank reference compounds and compute ADME.
+#Retrieve ChEMBL or DrugBank reference compounds and compute ADMET.
 # ---------------------------
-# Calculate ADME for ChEMBL compounds based on selected action types and cache results
+# Calculate ADMET for ChEMBL compounds based on selected action types and cache results
 # ---------------------------
         
     if (
@@ -581,15 +581,15 @@ if smiles_list:
                     st.session_state.adme_chembl_df = adme_chembl_df
 
         except Exception as e:
-                st.error(f"Error retrieving ChEMBL or ADME data: {e}")
+                st.error(f"Error retrieving ChEMBL or ADMET data: {e}")
 
     # ---------------------------
-    # Display ADME predictions if available
+    # Display ADMET predictions if available
     # ---------------------------
 
     if not st.session_state.adme_chembl_df.empty:
 
-        st.markdown("#### ADME Properties of ChEMBL Compounds")
+        st.markdown("#### ADMET Properties of ChEMBL Compounds")
         st.dataframe(
             st.session_state.adme_chembl_df,
             use_container_width=True
@@ -648,7 +648,7 @@ if smiles_list:
             st.session_state.adme_atc_df = df_drugbank_atc[admet_cols].copy()
 
 # ============================================================
-# ADME PROPERTY SELECTION, WEIGHTING AND DESIRABILITY SCORING
+# ADMET PROPERTY SELECTION, WEIGHTING AND DESIRABILITY SCORING
 # ============================================================
 
 # ------------------------------------------------------------
@@ -702,7 +702,7 @@ if (
     # ========================================================
     with st.form("select_adme_props_form"):
 
-        st.markdown("### 1. Select ADME properties")
+        st.markdown("### 1. Select ADMET properties")
 
         selected_tmp = []
 
@@ -720,7 +720,7 @@ if (
 
     if submitted_props or use_loaded_values:
         if not selected_tmp:
-            st.warning("Please select at least one ADME property.")
+            st.warning("Please select at least one ADMET property.")
         else:
             st.session_state.selected_adme_props = selected_tmp
 
@@ -730,7 +730,7 @@ if (
             for prop in selected_tmp
         }
 
-        st.success("ADME properties selected.")
+        st.success("ADMET properties selected.")
 
 
     # ========================================================
@@ -765,7 +765,7 @@ if (
 
             st.session_state.weights_confirmed = True
 
-            st.success("ADME weights saved successfully.")
+            st.success("ADMET weights saved successfully.")
 
 
     # ========================================================
