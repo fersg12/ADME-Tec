@@ -503,13 +503,19 @@ if smiles_list:
             model = load_admet_model()
             adme_results = model.predict(smiles_list)
 
-            st.session_state.adme_df = pd.DataFrame(adme_results)
+            adme_df = pd.DataFrame(adme_results)
 
-            # Insert structural columns at the front of the DataFrame for better visibility
-            st.session_state.adme_df.insert(0, "smiles", smiles_list)
-            # Map internal column names to user-friendly labels for display
+            # Create complementary BBB score (high = safer, low BBB penetration)
+            if "BBB_Martins" in adme_df.columns:
+                adme_df["BBB_Martins_Safe"] = 1 - adme_df["BBB_Martins"]
+
+            # Insert structural columns
+            adme_df.insert(0, "smiles", smiles_list)
+
             if input_df is not None and "ID" in input_df.columns:
-                st.session_state.adme_df["ID"] = input_df["ID"].values
+                adme_df["ID"] = input_df["ID"].values
+
+            st.session_state.adme_df = adme_df
 
     st.markdown("### ADMET Properties of Input Molecules")
     st.dataframe(st.session_state.adme_df, use_container_width=True)
@@ -582,7 +588,9 @@ if smiles_list:
                     chembl_target,
                     st.session_state.selected_actions
                     )
-
+                    # Create complementary BBB score (high = safer, low BBB penetration)
+                    if "BBB_Martins" in adme_chembl_df.columns:
+                        adme_chembl_df["BBB_Martins_Safe"] = 1 - adme_chembl_df["BBB_Martins"]
                     st.session_state.chembl_df = chembl_df
                     st.session_state.adme_chembl_df = adme_chembl_df
 
@@ -651,6 +659,8 @@ if smiles_list:
 
         if admet_cols:
 
+            if "BBB_Martins" in df_drugbank_atc.columns and "BBB_Martins_Safe" not in df_drugbank_atc.columns:
+                df_drugbank_atc["BBB_Martins_Safe"] = 1 - df_drugbank_atc["BBB_Martins"]
             st.session_state.adme_atc_df = df_drugbank_atc[admet_cols].copy()
 
 # ============================================================

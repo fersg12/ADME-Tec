@@ -125,8 +125,8 @@ PROPERTY_CONFIG = {
     "BBB_Martins_Safe": {
         "family": "decreasing",
         "params": {
-            "a": "a_BBB_Martins",
-            "b": "b_BBB_Martins"
+            "a": "a_BBB_Martins_Safe",
+            "b": "b_BBB_Martins_Safe"
         },
         "weight": "BBB_Martins_Safe",
         "uncertainty": "usigmoidal"
