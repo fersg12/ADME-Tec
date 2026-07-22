@@ -290,8 +290,6 @@ def plot_heatmap_similitud(
 
     # ===== mean similarity =====
     df_sim["Mean_Similarity"] = df_sim.mean(axis=1)
-
-
     sim_cols = [c for c in df_sim.columns if c != "Mean_Similarity"]
 
     # ===== clustering =====
@@ -305,15 +303,18 @@ def plot_heatmap_similitud(
     sns.set(style="white")
 
      # ===== plot =====
+    #fig_height = max(6, len(df_sim) * 0.5)  # Adjust height based on number of rows
+
     g = sns.clustermap(
         df_sim,
         row_linkage=row_linkage,
         col_linkage=col_linkage,
         cmap="viridis",
         vmin=0, vmax=1,
-        figsize=(10, 8),
+        figsize=(10, 10),
         xticklabels=True,
         yticklabels=True,
+        cbar_pos=(0.99, 0.2, 0.015, 0.6),
         cbar_kws={"label": "Tanimoto similarity"}
     )
 
@@ -322,10 +323,9 @@ def plot_heatmap_similitud(
     g.ax_heatmap.set_ylabel("Query compounds", fontsize=10)
 
     # ===== ticks =====
-    g.ax_heatmap.tick_params(axis='x', labelsize=7)
-    g.ax_heatmap.tick_params(axis='y', labelsize=7)
+    g.ax_heatmap.tick_params(axis='x', labelsize=6)
+    g.ax_heatmap.tick_params(axis='y', labelsize=6)
 
-    # Optional: Rotate x-axis labels for better readability
     plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha="right")
 
     st.pyplot(g.fig)

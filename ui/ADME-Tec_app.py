@@ -256,7 +256,7 @@ with st.expander("⚙️ Functionalities", expanded=False):
                 ADMET prediction
             </div>
             <div class="text">
-                Compute physicochemical and ADME properties using ADMET-AI.
+                Compute physicochemical and ADMET properties using ADMET-AI.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -269,7 +269,7 @@ with st.expander("⚙️ Functionalities", expanded=False):
                 Desirability Score
             </div>
             <div class="text">
-                Prioritize compounds based on customizable ADME desirability.
+                Prioritize compounds based on customizable ADMET desirability.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -908,7 +908,7 @@ if (
                 st.error(f"Error computing desirability: {e}")
 
             # ========================================================
-            # SUMMARY DASHBOARD (FIXED VERSION)
+            # SUMMARY DASHBOARD
             # ========================================================
             if (
                 ref_key is not None
@@ -919,15 +919,6 @@ if (
                 input_adme_df = st.session_state.adme_df
 
                 st.markdown("### Summary Dashboard")
-
-                col1, col2, col3 = st.columns(3)
-
-                # -----------------------------
-                # METRICS
-                # ---------------------------
-
-                col1.metric("Input compounds", len(input_adme_df))
-                col2.metric("Reference compounds", len(ref_df))
 
                 # -----------------------------
                 # DESIRABILITY DETECTION
@@ -940,26 +931,57 @@ if (
                 elif "desirability_geo_df" in st.session_state and not st.session_state.desirability_geo_df.empty:
                     df_des = st.session_state.desirability_geo_df
 
+
                 # -----------------------------
                 # SCORE COLUMN
                 # -----------------------------
                 avg_score = None
+                ref_avg_score = None
+                ref_q1_score = None
                 score_col = None
 
                 if df_des is not None:
 
                     score_col = next(
-                        (c for c in df_des.columns
-                        if "Desirability" in c),
+                        (c for c in df_des.columns if "Desirability" in c),
                         None
                     )
 
                     if score_col:
+
+                        # Input compounds
                         avg_score = df_des[score_col].mean()
 
+                        # Reference compounds
+                        if (
+                            "desirability_ref_df" in st.session_state
+                            and not st.session_state.desirability_ref_df.empty
+                            and score_col in st.session_state.desirability_ref_df.columns
+                        ):
+
+                            ref_scores = st.session_state.desirability_ref_df[score_col]
+
+                            ref_avg_score = ref_scores.mean()
+                            ref_q1_score = ref_scores.quantile(0.25)
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+
+                col1.metric("Input compounds", len(input_adme_df))
+                col2.metric("Reference compounds", len(ref_df))
+
                 col3.metric(
-                    "Avg desirability",
+                    "Input Avg",
                     round(avg_score, 3) if avg_score is not None else "N/A"
+                )
+
+                col4.metric(
+                    "Reference Avg",
+                    round(ref_avg_score, 3) if ref_avg_score is not None else "N/A"
+                )
+
+                col5.metric(
+                    "Reference Q1",
+                    round(ref_q1_score, 3) if ref_q1_score is not None else "N/A"
                 )
 
                 # ========================================================
@@ -1042,7 +1064,7 @@ if (
                     )
 
                     # ------------------------------
-                    # NOMBRE EN X
+                    # Name X
                     # ------------------------------
                     def get_name(row):
                         if row["Dataset"] == "Reference":
@@ -1065,7 +1087,7 @@ if (
                     df_all["Compound_name"] = df_all.apply(get_name, axis=1)
 
                     # ==============================
-                    # ORDEN GLOBAL (ya lo tienes)
+                    # ORDER BY SCORE
                     # ==============================
                     df_all = df_all.sort_values(by=score_col, ascending=False).reset_index(drop=True)
 
@@ -1109,7 +1131,21 @@ if (
                     ))
 
                     # ==============================
-                    # EJE X CON LABELS CORRECTOS
+                    # REFERENCE Q1 THRESHOLD
+                    # ==============================
+                    if ref_q1_score is not None:
+
+                        fig.add_hline(
+                            y=ref_q1_score,
+                            line_dash="dot",
+                            line_color="darkgreen",
+                            line_width=2,
+                            annotation_text=f"Reference Q1 = {ref_q1_score:.3f}",
+                            annotation_position="top right"
+                        )
+
+                    # ==============================
+                    # X and Y AXIS CONFIGURATION
                     # ==============================
                     fig.update_layout(
                         xaxis=dict(
@@ -1125,7 +1161,16 @@ if (
                         legend=dict(title="Dataset")
                     )
 
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True) 
+
+                                # -------- pie de figura --------
+                    st.markdown(
+                        """
+                        *Desirability scores for the input compounds (blue) and the reference compounds (red), 
+                        ranked from highest to lowest score. The dotted horizontal line indicates the first quartile (Q1) of the reference compounds. 
+                        Using this value as the prioritization threshold would recover approximately 75% of the reference compounds.*
+                        """
+                    )
 
                 # ========================================================
                 # SHOW DESIRABILITY TABLE (FINAL OUTPUT)
