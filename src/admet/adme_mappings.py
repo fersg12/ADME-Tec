@@ -76,6 +76,7 @@ map_columns_perc = {
     "PAMPA": "PAMPA_NCATS_drugbank_approved_percentile",
     "Pgp": "Pgp_Broccatelli_drugbank_approved_percentile",
     "BBB penetration": "BBB_Martins_drugbank_approved_percentile",
+    "BBB safe": "BBB_Martins_drugbank_approved_percentile",
     "VDss": "VDss_Lombardo_drugbank_approved_percentile",
     "PPBR": "PPBR_AZ_drugbank_approved_percentile",
     "CYP1A2 inhibitor": "CYP1A2_Veith_drugbank_approved_percentile",

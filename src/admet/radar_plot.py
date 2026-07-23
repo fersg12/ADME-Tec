@@ -9,24 +9,59 @@ from src.admet.adme_mappings import map_columns_perc
 def plot_radar_with_min_max_df(
     min_df,
     max_df,
-    compuestos_df,
-    title
+    compuestos_df
 ):
 
     # ==================================================
     # CONFIG
     # ==================================================
     REVERSE_PATTERNS = {
-        "bbb": "BBB_Safe",
-        "herg": "Non_hERG",
-        "dili": "Non_DILI",
-        "substrate": "Non_Substrate",
-        "clearance": "Low_Clearance",
+
+        # Transport / Distribution
+        "BBB safe": "BBB Safe",
+        "Pgp": "Non Pgp",
+        "VDss": "Low VDss",
+        "PPBR": "Low PPBR",
+
+        # CYP inhibitors
+        "CYP1A2 inhibitor": "Non CYP1A2 inhibitor",
+        "CYP2C19 inhibitor": "Non CYP2C19 inhibitor",
+        "CYP2C9 inhibitor": "Non CYP2C9 inhibitor",
+        "CYP2D6 inhibitor": "Non CYP2D6 inhibitor",
+        "CYP3A4 inhibitor": "Non CYP3A4 inhibitor",
+
+        # CYP substrates
+        "CYP2C9 Substrate": "Non CYP2C9 Substrate",
+        "CYP2D6 Substrate": "Non CYP2D6 Substrate",
+        "CYP3A4 Substrate": "Non CYP3A4 Substrate",
+
+        # Clearance
+        "Clearance (Microsome)": "Low Clearance (Microsome)",
+        "Clearance (Hepatocyte)": "Low Clearance (Hepatocyte)",
+
+        # Toxicity
+        "AMES": "Non AMES",
+        "DILI": "Non DILI",
+        "Carcinogenicity": "Non Carcinogenic",
+        "hERG": "Non hERG",
+        "Skin Reaction": "Non Skin Reaction",
+        "ClinTox": "Non Clinical Toxicity",
+
+        # Tox21
+        "NR-AR-LBD": "Non NR-AR-LBD",
+        "NR-AR": "Non NR-AR",
+        "NR-AhR": "Non NR-AhR",
+        "NR-Aromatase": "Non NR-Aromatase",
+        "NR-ER-LBD": "Non NR-ER-LBD",
+        "NR-ER": "Non NR-ER",
+        "NR-PPAR-gamma": "Non NR-PPAR-gamma",
+        "SR-ARE": "Non SR-ARE",
+        "SR-ATAD5": "Non SR-ATAD5",
+        "SR-HSE": "Non SR-HSE",
+        "SR-MMP": "Non SR-MMP",
+        "SR-p53": "Non SR-p53",
     }
 
-    inverse_map = {
-        v: k for k, v in map_columns_perc.items()
-    }
 
     # ==================================================
     # COPY
@@ -38,23 +73,21 @@ def plot_radar_with_min_max_df(
     # ==================================================
     # TRANSFORM
     # ==================================================
+    
+    inverse_map = {v: k for k, v in map_columns_perc.items()}
+
+
     def transform_df(df):
 
         new_df = pd.DataFrame(index=df.index)
 
         for col in df.columns:
 
-            col_lower = col.lower()
-            replaced = False
+            property_name = inverse_map.get(col, col)
 
-            for pattern in REVERSE_PATTERNS:
-
-                if pattern in col_lower:
-                    new_df[col] = 100 - df[col]
-                    replaced = True
-                    break
-
-            if not replaced:
+            if property_name in REVERSE_PATTERNS:
+                new_df[col] = 100 - df[col]
+            else:
                 new_df[col] = df[col]
 
         return new_df
@@ -74,36 +107,15 @@ def plot_radar_with_min_max_df(
     # ==================================================
     # LABELS
     # ==================================================
-    def get_readable_name(col):
+    propiedades_legibles = []
 
-        base_name = inverse_map.get(col, col)
-        name_lower = base_name.lower()
+    for col in propiedades_claves:
 
-        if "bbb" in name_lower:
-            return "BBB Safe"
+        property_name = inverse_map.get(col, col)
 
-        elif "herg" in name_lower:
-            return "Non-hERG"
-
-        elif "dili" in name_lower:
-            return "Non-DILI"
-
-        elif "clearance" in name_lower:
-            return "Low Clearance"
-
-        elif "substrate" in name_lower:
-            return "Non-" + base_name.replace(
-                " Substrate",
-                ""
-            )
-
-        else:
-            return base_name
-
-    propiedades_legibles = [
-        get_readable_name(col)
-        for col in propiedades_claves
-    ]
+        propiedades_legibles.append(
+            REVERSE_PATTERNS.get(property_name, property_name)
+        )
 
     # ==================================================
     # VALUES
@@ -253,11 +265,16 @@ def plot_radar_with_min_max_df(
             [valores[0]]
         ])
 
+        if "ID" in compuestos_df.columns and pd.notna(row["ID"]):
+                compound_name = str(row["ID"])
+        else:
+                compound_name = f"Compound {i+1}"
+
         ax.plot(
             angles_closed,
             valores_closed,
             linewidth=3,
-            label=f"Compound {i+1}"
+            label=compound_name
         )
 
         ax.scatter(
@@ -272,14 +289,6 @@ def plot_radar_with_min_max_df(
     # ==================================================
     ax.grid(alpha=0.4)
 
-    # ==================================================
-    # TITLE
-    # ==================================================
-    plt.title(
-        title,
-        fontsize=22,
-        y=1.08
-    )
 
     # ==================================================
     # LEGEND
@@ -299,16 +308,9 @@ def plot_radar_with_min_max_df(
 
 def plot_desirability_heatmap(df_des):
 
-    # Seleccionar columnas que empiezan con "desirability"
     desirability_cols = [col for col in df_des.columns if col.startswith("desirability")]
-
-    # Asegurar que existe columna ID (ajusta si se llama diferente)
     id_col = "ID" if "ID" in df_des.columns else df_des.columns[0]
-
-    # Subset del dataframe
     df_heatmap = df_des[[id_col] + desirability_cols].copy()
-
-    # Usar ID como índice
     df_heatmap.set_index(id_col, inplace=True)
 
     return df_heatmap

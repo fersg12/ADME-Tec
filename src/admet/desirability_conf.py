@@ -123,7 +123,7 @@ PROPERTY_CONFIG = {
     },
 
     "BBB_Martins_Safe": {
-        "family": "decreasing",
+        "family": "increasing",
         "params": {
             "a": "a_BBB_Martins_Safe",
             "b": "b_BBB_Martins_Safe"
@@ -261,7 +261,7 @@ PROPERTY_CONFIG = {
             "d": "Half_Life_Obach[3]",
             "floor": 0.05
         },
-        "weight": "tpsa",
+        "weight": "Half_Life_Obach",
         "uncertainty": "utrapezoidal"
     },
 

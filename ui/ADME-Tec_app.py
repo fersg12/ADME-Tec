@@ -782,6 +782,7 @@ if (
             st.session_state.weights_confirmed = True
 
             st.success("ADMET weights saved successfully.")
+            
 
 
     # ========================================================
@@ -850,11 +851,17 @@ if (
                 # -----------------------------------------
                 # Filter PROPERTY_CONFIG only for selected
                 # -----------------------------------------
+
                 filtered_config = {
                     k: v
                     for k, v in PROPERTY_CONFIG.items()
                     if k in selected_internal_props
                 }
+
+                print(selected_ui_props)
+                print(selected_internal_props)
+                print(filtered_config.keys())
+
                 # ---------------------------------------
                 # Build ranges from reference dataset
                 # -----------------------------------------
@@ -1451,6 +1458,7 @@ if (
                         with col2:
                             name = (compound_name.replace('.', '_')) + ".png"
                             comp_df = pd.DataFrame([row[selected_cols]])
+                            comp_df["ID"] = compound_name
 
                             # If example mode is active and example image exists, show it
                             if st.session_state.get("use_example", False) and os.path.exists(f"example/{name}"):
@@ -1462,7 +1470,6 @@ if (
                                         min_df=min_df,
                                         max_df=max_df,
                                         compuestos_df=comp_df,
-                                        title=compound_name
                                     )
                                     st.pyplot(fig, clear_figure=True)
                                 except Exception as _e:
