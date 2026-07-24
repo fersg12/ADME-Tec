@@ -9,14 +9,14 @@ from src.admet.adme_mappings import map_columns_perc
 def plot_radar_with_min_max_df(
     min_df,
     max_df,
-    compuestos_df
+    compuestos_df,
+    selected_properties
 ):
 
     # ==================================================
     # CONFIG
     # ==================================================
     REVERSE_PATTERNS = {
-
         # Transport / Distribution
         "BBB safe": "BBB Safe",
         "Pgp": "Non Pgp",
@@ -74,7 +74,30 @@ def plot_radar_with_min_max_df(
     # TRANSFORM
     # ==================================================
     
-    inverse_map = {v: k for k, v in map_columns_perc.items()}
+    inverse_map = {}
+
+    for prop, col in map_columns_perc.items():
+
+        if col == "BBB_Martins_drugbank_approved_percentile":
+            continue
+
+        inverse_map[col] = prop
+
+
+    selected_properties = set(selected_properties)
+
+
+    def get_property_name(col):
+
+        if col == "BBB_Martins_drugbank_approved_percentile":
+
+            if "BBB safe" in selected_properties:
+                return "BBB safe"
+
+            return "BBB penetration"
+
+        return inverse_map.get(col, col)
+
 
 
     def transform_df(df):
@@ -83,7 +106,7 @@ def plot_radar_with_min_max_df(
 
         for col in df.columns:
 
-            property_name = inverse_map.get(col, col)
+            property_name = get_property_name(col)
 
             if property_name in REVERSE_PATTERNS:
                 new_df[col] = 100 - df[col]
@@ -111,7 +134,7 @@ def plot_radar_with_min_max_df(
 
     for col in propiedades_claves:
 
-        property_name = inverse_map.get(col, col)
+        property_name = get_property_name(col)
 
         propiedades_legibles.append(
             REVERSE_PATTERNS.get(property_name, property_name)

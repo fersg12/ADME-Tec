@@ -1470,6 +1470,7 @@ if (
                                         min_df=min_df,
                                         max_df=max_df,
                                         compuestos_df=comp_df,
+                                        selected_properties=st.session_state.selected_adme_props
                                     )
                                     st.pyplot(fig, clear_figure=True)
                                 except Exception as _e:
