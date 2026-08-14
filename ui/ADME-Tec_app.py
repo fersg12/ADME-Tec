@@ -827,1307 +827,1460 @@ if (
     st.markdown(f"## Context-Aware Prioritization Using {ref_label}")
 
     is_single_molecule = len(input_adme_df) == 1
-# ========================================================
-# PROPERTY SELECTION
-# ========================================================
+    # ========================================================
+    # PROPERTY SELECTION
+    # ========================================================
 
-with st.form("select_adme_props_form"):
+    with st.form("select_adme_props_form"):
 
-    st.markdown("### 1. Select ADMET properties")
+        st.markdown("### 1. Select ADMET properties")
 
-    selected_tmp = []
+        selected_tmp = []
 
-    for category, props in categories_adme.items():
+        for category, props in categories_adme.items():
 
-        with st.expander(category, expanded=False):
+            with st.expander(category, expanded=False):
 
-            for prop in props:
+                for prop in props:
 
-                if st.checkbox(
-                    prop,
-                    key=f"sel_{prop}",
-                    value=prop in st.session_state.selected_adme_props,
-                ):
-                    selected_tmp.append(prop)
+                    if st.checkbox(
+                        prop,
+                        key=f"sel_{prop}",
+                        value=prop in st.session_state.selected_adme_props,
+                    ):
+                        selected_tmp.append(prop)
 
-    submitted_props = st.form_submit_button(
-        "Confirm property selection"
-    )
-
-
-# --------------------------------------------------------
-# SAVE PROPERTY SELECTION
-# --------------------------------------------------------
-
-if submitted_props:
-
-    if not selected_tmp:
-
-        st.warning(
-            "Please select at least one ADMET property."
-        )
-
-    else:
-
-        st.session_state.selected_adme_props = selected_tmp
-
-        # New property selection requires new weights
-        st.session_state.weights_confirmed = False
-
-        # Keep existing weights when possible
-        st.session_state.adme_weights = {
-            prop: st.session_state.adme_weights.get(
-                prop,
-                1.0
-            )
-            for prop in selected_tmp
-        }
-
-        # Clear previous desirability results
-        st.session_state.pop(
-            "desirability_df",
-            None
-        )
-
-        st.session_state.pop(
-            "desirability_geo_df",
-            None
-        )
-
-        st.session_state.pop(
-            "desirability_ref_df",
-            None
-        )
-
-        st.success(
-            "ADMET properties selected."
+        submitted_props = st.form_submit_button(
+            "Confirm property selection"
         )
 
 
-# ========================================================
-# WEIGHTS
-# ========================================================
+    # --------------------------------------------------------
+    # SAVE PROPERTY SELECTION
+    # --------------------------------------------------------
 
-if st.session_state.selected_adme_props:
+    if submitted_props:
 
-    st.markdown(
-        "### 2. Assign weights to selected properties"
-    )
+        if not selected_tmp:
 
-    if not st.session_state.get(
-        "weights_confirmed",
-        False
-    ):
-
-        st.info(
-            "Assign the relative importance of each property."
-        )
-
-        with st.form("assign_adme_weights_form"):
-
-            weights_tmp = {}
-
-            for prop in st.session_state.selected_adme_props:
-
-                weight = st.slider(
-                    f"Weight for {prop}",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=float(
-                        st.session_state.adme_weights.get(
-                            prop,
-                            1.0
-                        )
-                    ),
-                    step=0.05,
-                    key=f"w_{prop}",
-                )
-
-                weights_tmp[prop] = weight
-
-            submitted_weights = st.form_submit_button(
-                "Confirm weights"
-            )
-
-
-        # ----------------------------------------------------
-        # SAVE WEIGHTS
-        # ----------------------------------------------------
-
-        if submitted_weights:
-
-            # Prevent all weights = 0
-            if sum(weights_tmp.values()) <= 0:
-
-                st.error(
-                    "At least one property must have a weight greater than 0."
-                )
-
-            else:
-
-                st.session_state.adme_weights = weights_tmp
-
-                st.session_state.weights_confirmed = True
-
-                # Clear previous results
-                st.session_state.pop(
-                    "desirability_df",
-                    None
-                )
-
-                st.session_state.pop(
-                    "desirability_geo_df",
-                    None
-                )
-
-                st.session_state.pop(
-                    "desirability_ref_df",
-                    None
-                )
-
-                st.success(
-                    "ADMET weights saved successfully."
-                )
-
-    else:
-
-        st.success(
-            "ADMET weights confirmed."
-        )
-
-
-# ========================================================
-# DESIRABILITY SCORING
-# ========================================================
-
-selected_ui_props = st.session_state.get(
-    "selected_adme_props",
-    []
-)
-
-all_ui_weights = st.session_state.get(
-    "adme_weights",
-    {}
-)
-
-weights_ready = st.session_state.get(
-    "weights_confirmed",
-    False
-)
-
-
-# --------------------------------------------------------
-# Convert UI properties → internal property names
-# --------------------------------------------------------
-
-selected_internal_props = [
-    map_columns[p]
-    for p in selected_ui_props
-    if p in map_columns
-]
-
-
-# --------------------------------------------------------
-# Convert UI weights → internal property names
-# --------------------------------------------------------
-
-internal_weights = {
-    map_columns[k]: v
-    for k, v in all_ui_weights.items()
-    if k in map_columns
-}
-
-
-# --------------------------------------------------------
-# Keep only selected properties
-# --------------------------------------------------------
-
-filtered_weights = {
-    prop: internal_weights[prop]
-    for prop in selected_internal_props
-    if prop in internal_weights
-}
-
-
-# --------------------------------------------------------
-# Design phase
-# --------------------------------------------------------
-
-is_single_molecule = (
-    len(input_adme_df) == 1
-)
-
-is_hit_phase = (
-    design_phase == "Hit identification"
-)
-
-is_geo_phase = (
-    design_phase
-    in [
-        "Lead optimization",
-        "Candidate selection"
-    ]
-)
-
-
-# --------------------------------------------------------
-# Enable desirability
-# --------------------------------------------------------
-
-enable_desirability = (
-    bool(selected_internal_props)
-    and bool(filtered_weights)
-    and weights_ready
-    and (is_hit_phase or is_geo_phase)
-)
-
-
-# ========================================================
-# DEBUG INFORMATION
-# ========================================================
-
-with st.expander(
-    "Desirability calculation status",
-    expanded=False
-):
-
-    st.write(
-        "Selected properties:",
-        selected_ui_props
-    )
-
-    st.write(
-        "Internal properties:",
-        selected_internal_props
-    )
-
-    st.write(
-        "Weights:",
-        filtered_weights
-    )
-
-    st.write(
-        "Weights confirmed:",
-        weights_ready
-    )
-
-    st.write(
-        "Design phase:",
-        design_phase
-    )
-
-    st.write(
-        "Input molecules:",
-        len(input_adme_df)
-    )
-
-    st.write(
-        "Desirability enabled:",
-        enable_desirability
-    )
-
-
-# ========================================================
-# RUN DESIRABILITY
-# ========================================================
-
-if enable_desirability:
-
-    try:
-
-        # ------------------------------------------------
-        # Normalize weights
-        # ------------------------------------------------
-
-        weights = normalize_weights(
-            filtered_weights
-        )
-
-
-        # ------------------------------------------------
-        # Filter PROPERTY_CONFIG
-        # ------------------------------------------------
-
-        filtered_config = {
-            k: v
-            for k, v in PROPERTY_CONFIG.items()
-            if k in selected_internal_props
-        }
-
-
-        # ------------------------------------------------
-        # Check configuration
-        # ------------------------------------------------
-
-        missing_config = [
-            p
-            for p in selected_internal_props
-            if p not in filtered_config
-        ]
-
-        if missing_config:
-
-            st.error(
-                f"Properties missing from PROPERTY_CONFIG: "
-                f"{missing_config}"
+            st.warning(
+                "Please select at least one ADMET property."
             )
 
         else:
 
-            # --------------------------------------------
-            # Build ranges from reference set
-            # --------------------------------------------
+            st.session_state.selected_adme_props = selected_tmp
 
-            ranges = prepare_ranges_from_reference(
-                ref_df,
-                filtered_config
+            # New property selection requires new weights
+            st.session_state.weights_confirmed = False
+
+            # Keep existing weights when possible
+            st.session_state.adme_weights = {
+                prop: st.session_state.adme_weights.get(
+                    prop,
+                    1.0
+                )
+                for prop in selected_tmp
+            }
+
+            # Clear previous desirability results
+            st.session_state.pop(
+                "desirability_df",
+                None
+            )
+
+            st.session_state.pop(
+                "desirability_geo_df",
+                None
+            )
+
+            st.session_state.pop(
+                "desirability_ref_df",
+                None
+            )
+
+            st.success(
+                "ADMET properties selected."
             )
 
 
-            # =================================================
-            # HIT IDENTIFICATION
-            # =================================================
+    # ========================================================
+    # WEIGHTS
+    # ========================================================
 
-            if is_hit_phase:
+    if st.session_state.selected_adme_props:
 
-                if not use_loaded_values:
+        st.markdown(
+            "### 2. Assign weights to selected properties"
+        )
 
-                    desirability_df = compute_desirability(
-                        inputs=input_adme_df,
-                        ranges=ranges,
-                        weights=weights,
-                        config=filtered_config,
+        if not st.session_state.get(
+            "weights_confirmed",
+            False
+        ):
+
+            st.info(
+                "Assign the relative importance of each property."
+            )
+
+            with st.form("assign_adme_weights_form"):
+
+                weights_tmp = {}
+
+                for prop in st.session_state.selected_adme_props:
+
+                    weight = st.slider(
+                        f"Weight for {prop}",
+                        min_value=0.0,
+                        max_value=1.0,
+                        value=float(
+                            st.session_state.adme_weights.get(
+                                prop,
+                                1.0
+                            )
+                        ),
+                        step=0.05,
+                        key=f"w_{prop}",
                     )
 
-                    desirability_ref_df = compute_desirability(
-                        inputs=ref_df,
-                        ranges=ranges,
-                        weights=weights,
-                        config=filtered_config,
+                    weights_tmp[prop] = weight
+
+                submitted_weights = st.form_submit_button(
+                    "Confirm weights"
+                )
+
+
+            # ----------------------------------------------------
+            # SAVE WEIGHTS
+            # ----------------------------------------------------
+
+            if submitted_weights:
+
+                # Prevent all weights = 0
+                if sum(weights_tmp.values()) <= 0:
+
+                    st.error(
+                        "At least one property must have a weight greater than 0."
                     )
 
-                    st.session_state.desirability_df = (
-                        desirability_df
+                else:
+
+                    st.session_state.adme_weights = weights_tmp
+
+                    st.session_state.weights_confirmed = True
+
+                    # Clear previous results
+                    st.session_state.pop(
+                        "desirability_df",
+                        None
                     )
 
-                    st.session_state.desirability_ref_df = (
-                        desirability_ref_df
+                    st.session_state.pop(
+                        "desirability_geo_df",
+                        None
                     )
 
+                    st.session_state.pop(
+                        "desirability_ref_df",
+                        None
+                    )
 
-            # =================================================
-            # LEAD / CANDIDATE
-            # =================================================
+                    st.success(
+                        "ADMET weights saved successfully."
+                    )
 
-            elif is_geo_phase:
+        else:
 
-                if not use_loaded_values:
+            st.success(
+                "ADMET weights confirmed."
+            )
 
-                    desirability_geo_df = (
-                        compute_desirability_geometric(
+
+    # ========================================================
+    # DESIRABILITY SCORING
+    # ========================================================
+
+    selected_ui_props = st.session_state.get(
+        "selected_adme_props",
+        []
+    )
+
+    all_ui_weights = st.session_state.get(
+        "adme_weights",
+        {}
+    )
+
+    weights_ready = st.session_state.get(
+        "weights_confirmed",
+        False
+    )
+
+
+    # --------------------------------------------------------
+    # Convert UI properties → internal property names
+    # --------------------------------------------------------
+
+    selected_internal_props = [
+        map_columns[p]
+        for p in selected_ui_props
+        if p in map_columns
+    ]
+
+
+    # --------------------------------------------------------
+    # Convert UI weights → internal property names
+    # --------------------------------------------------------
+
+    internal_weights = {
+        map_columns[k]: v
+        for k, v in all_ui_weights.items()
+        if k in map_columns
+    }
+
+
+    # --------------------------------------------------------
+    # Keep only selected properties
+    # --------------------------------------------------------
+
+    filtered_weights = {
+        prop: internal_weights[prop]
+        for prop in selected_internal_props
+        if prop in internal_weights
+    }
+
+
+    # --------------------------------------------------------
+    # Design phase
+    # --------------------------------------------------------
+
+    is_single_molecule = (
+        len(input_adme_df) == 1
+    )
+
+    is_hit_phase = (
+        design_phase == "Hit identification"
+    )
+
+    is_geo_phase = (
+        design_phase
+        in [
+            "Lead optimization",
+            "Candidate selection"
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # Enable desirability
+    # --------------------------------------------------------
+
+    enable_desirability = (
+        bool(selected_internal_props)
+        and bool(filtered_weights)
+        and weights_ready
+        and (is_hit_phase or is_geo_phase)
+    )
+
+
+    # ========================================================
+    # DEBUG INFORMATION
+    # ========================================================
+
+    with st.expander(
+        "Desirability calculation status",
+        expanded=False
+    ):
+
+        st.write(
+            "Selected properties:",
+            selected_ui_props
+        )
+
+        st.write(
+            "Internal properties:",
+            selected_internal_props
+        )
+
+        st.write(
+            "Weights:",
+            filtered_weights
+        )
+
+        st.write(
+            "Weights confirmed:",
+            weights_ready
+        )
+
+        st.write(
+            "Design phase:",
+            design_phase
+        )
+
+        st.write(
+            "Input molecules:",
+            len(input_adme_df)
+        )
+
+        st.write(
+            "Desirability enabled:",
+            enable_desirability
+        )
+
+
+    # ========================================================
+    # RUN DESIRABILITY
+    # ========================================================
+
+    if enable_desirability:
+
+        try:
+
+            # ------------------------------------------------
+            # Normalize weights
+            # ------------------------------------------------
+
+            weights = normalize_weights(
+                filtered_weights
+            )
+
+
+            # ------------------------------------------------
+            # Filter PROPERTY_CONFIG
+            # ------------------------------------------------
+
+            filtered_config = {
+                k: v
+                for k, v in PROPERTY_CONFIG.items()
+                if k in selected_internal_props
+            }
+
+
+            # ------------------------------------------------
+            # Check configuration
+            # ------------------------------------------------
+
+            missing_config = [
+                p
+                for p in selected_internal_props
+                if p not in filtered_config
+            ]
+
+            if missing_config:
+
+                st.error(
+                    f"Properties missing from PROPERTY_CONFIG: "
+                    f"{missing_config}"
+                )
+
+            else:
+
+                # --------------------------------------------
+                # Build ranges from reference set
+                # --------------------------------------------
+
+                ranges = prepare_ranges_from_reference(
+                    ref_df,
+                    filtered_config
+                )
+
+
+                # =================================================
+                # HIT IDENTIFICATION
+                # =================================================
+
+                if is_hit_phase:
+
+                    if not use_loaded_values:
+
+                        desirability_df = compute_desirability(
                             inputs=input_adme_df,
                             ranges=ranges,
                             weights=weights,
                             config=filtered_config,
                         )
-                    )
 
-                    desirability_ref_df = (
-                        compute_desirability_geometric(
+                        desirability_ref_df = compute_desirability(
                             inputs=ref_df,
                             ranges=ranges,
                             weights=weights,
                             config=filtered_config,
                         )
-                    )
 
-                    st.session_state.desirability_geo_df = (
-                        desirability_geo_df
-                    )
+                        st.session_state.desirability_df = (
+                            desirability_df
+                        )
 
-                    st.session_state.desirability_ref_df = (
-                        desirability_ref_df
-                    )
+                        st.session_state.desirability_ref_df = (
+                            desirability_ref_df
+                        )
 
 
-            st.success(
-                "Desirability analysis completed."
+                # =================================================
+                # LEAD / CANDIDATE
+                # =================================================
+
+                elif is_geo_phase:
+
+                    if not use_loaded_values:
+
+                        desirability_geo_df = (
+                            compute_desirability_geometric(
+                                inputs=input_adme_df,
+                                ranges=ranges,
+                                weights=weights,
+                                config=filtered_config,
+                            )
+                        )
+
+                        desirability_ref_df = (
+                            compute_desirability_geometric(
+                                inputs=ref_df,
+                                ranges=ranges,
+                                weights=weights,
+                                config=filtered_config,
+                            )
+                        )
+
+                        st.session_state.desirability_geo_df = (
+                            desirability_geo_df
+                        )
+
+                        st.session_state.desirability_ref_df = (
+                            desirability_ref_df
+                        )
+
+
+                st.success(
+                    "Desirability analysis completed."
+                )
+
+
+        except Exception as e:
+
+            st.error(
+                f"Error computing desirability: {e}"
+            )
+        # ========================================================
+        # SUMMARY DASHBOARD
+        # ========================================================
+        if (
+            ref_key is not None
+            and not st.session_state.adme_df.empty
+        ):
+
+            ref_df = st.session_state[ref_key]
+            input_adme_df = st.session_state.adme_df
+
+            st.markdown("### Summary Dashboard")
+
+            # -----------------------------
+            # DESIRABILITY DETECTION
+            # -----------------------------
+            df_des = None
+
+            if "desirability_df" in st.session_state and not st.session_state.desirability_df.empty:
+                df_des = st.session_state.desirability_df
+
+            elif "desirability_geo_df" in st.session_state and not st.session_state.desirability_geo_df.empty:
+                df_des = st.session_state.desirability_geo_df
+
+
+            # -----------------------------
+            # SCORE COLUMN
+            # -----------------------------
+            avg_score = None
+            ref_avg_score = None
+            ref_q1_score = None
+            score_col = None
+
+            if df_des is not None:
+
+                score_col = next(
+                    (c for c in df_des.columns if "Desirability" in c),
+                    None
+                )
+
+                if score_col:
+
+                    # Input compounds
+                    avg_score = df_des[score_col].mean()
+
+                    # Reference compounds
+                    if (
+                        "desirability_ref_df" in st.session_state
+                        and not st.session_state.desirability_ref_df.empty
+                        and score_col in st.session_state.desirability_ref_df.columns
+                    ):
+
+                        ref_scores = st.session_state.desirability_ref_df[score_col]
+
+                        ref_avg_score = ref_scores.mean()
+                        ref_q1_score = ref_scores.quantile(0.25)
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            col1.metric("Input compounds", len(input_adme_df))
+            col2.metric("Reference compounds", len(ref_df))
+
+            col3.metric(
+                "Input Avg",
+                round(avg_score, 3) if avg_score is not None else "N/A"
             )
 
-
-    except Exception as e:
-
-        st.error(
-            f"Error computing desirability: {e}"
-        )
-    # ========================================================
-    # SUMMARY DASHBOARD
-    # ========================================================
-    if (
-        ref_key is not None
-        and not st.session_state.adme_df.empty
-    ):
-
-        ref_df = st.session_state[ref_key]
-        input_adme_df = st.session_state.adme_df
-
-        st.markdown("### Summary Dashboard")
-
-        # -----------------------------
-        # DESIRABILITY DETECTION
-        # -----------------------------
-        df_des = None
-
-        if "desirability_df" in st.session_state and not st.session_state.desirability_df.empty:
-            df_des = st.session_state.desirability_df
-
-        elif "desirability_geo_df" in st.session_state and not st.session_state.desirability_geo_df.empty:
-            df_des = st.session_state.desirability_geo_df
-
-
-        # -----------------------------
-        # SCORE COLUMN
-        # -----------------------------
-        avg_score = None
-        ref_avg_score = None
-        ref_q1_score = None
-        score_col = None
-
-        if df_des is not None:
-
-            score_col = next(
-                (c for c in df_des.columns if "Desirability" in c),
-                None
+            col4.metric(
+                "Reference Avg",
+                round(ref_avg_score, 3) if ref_avg_score is not None else "N/A"
             )
 
-            if score_col:
+            col5.metric(
+                "Reference Q1",
+                round(ref_q1_score, 3) if ref_q1_score is not None else "N/A"
+            )
 
-                # Input compounds
-                avg_score = df_des[score_col].mean()
+            # ========================================================
+            # PLOT
+            # ========================================================
+            if df_des is not None and score_col:
 
-                # Reference compounds
-                if (
-                    "desirability_ref_df" in st.session_state
-                    and not st.session_state.desirability_ref_df.empty
-                    and score_col in st.session_state.desirability_ref_df.columns
-                ):
-
-                    ref_scores = st.session_state.desirability_ref_df[score_col]
-
-                    ref_avg_score = ref_scores.mean()
-                    ref_q1_score = ref_scores.quantile(0.25)
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        col1.metric("Input compounds", len(input_adme_df))
-        col2.metric("Reference compounds", len(ref_df))
-
-        col3.metric(
-            "Input Avg",
-            round(avg_score, 3) if avg_score is not None else "N/A"
-        )
-
-        col4.metric(
-            "Reference Avg",
-            round(ref_avg_score, 3) if ref_avg_score is not None else "N/A"
-        )
-
-        col5.metric(
-            "Reference Q1",
-            round(ref_q1_score, 3) if ref_q1_score is not None else "N/A"
-        )
-
-        # ========================================================
-        # PLOT
-        # ========================================================
-        if df_des is not None and score_col:
-
-            st.markdown("#### Desirability scores")
+                st.markdown("#### Desirability scores")
 
 
-            fig = go.Figure()
+                fig = go.Figure()
 
-            # ==============================
-            # INPUT COMPOUNDS
-            # ==============================
-            df_input_plot = df_des.copy().sort_values(by=score_col, ascending=False)
+                # ==============================
+                # INPUT COMPOUNDS
+                # ==============================
+                df_input_plot = df_des.copy().sort_values(by=score_col, ascending=False)
 
-            if "ID" in df_input_plot.columns:
-                x_input = df_input_plot["ID"].astype(str)
-            else:
-                x_input = df_input_plot.index.astype(str)
-
-            y_input = df_input_plot[score_col]
-
-            fig.add_trace(go.Scatter(
-                x=x_input,
-                y=y_input,
-                mode='lines+markers',
-                name='Input compounds',
-                line=dict(color='royalblue', width=3),
-                marker=dict(size=8, color='royalblue'),
-                fill='tozeroy',
-                fillcolor='rgba(65,105,225,0.15)'
-            ))
-
-            # ==============================
-            # REFERENCE COMPOUNDS
-            # ==============================
-            if "desirability_ref_df" in st.session_state:
-
-                df_ref_plot = st.session_state.desirability_ref_df.copy()
-
-                df_ref_plot = df_ref_plot.sort_values(by=score_col, ascending=False)
-
-                if "ID" in df_ref_plot.columns:
-                    x_ref = df_ref_plot["ID"].astype(str)
+                if "ID" in df_input_plot.columns:
+                    x_input = df_input_plot["ID"].astype(str)
                 else:
-                    x_ref = df_ref_plot.index.astype(str)
+                    x_input = df_input_plot.index.astype(str)
 
-                y_ref = df_ref_plot[score_col]
+                y_input = df_input_plot[score_col]
 
                 fig.add_trace(go.Scatter(
-                    x=x_ref,
-                    y=y_ref,
+                    x=x_input,
+                    y=y_input,
                     mode='lines+markers',
-                    name='Reference compounds',
-                    line=dict(color='firebrick', width=2, dash='dash'),
-                    marker=dict(size=6, color='firebrick'),
+                    name='Input compounds',
+                    line=dict(color='royalblue', width=3),
+                    marker=dict(size=8, color='royalblue'),
                     fill='tozeroy',
-                    fillcolor='rgba(178,34,34,0.10)'
+                    fillcolor='rgba(65,105,225,0.15)'
                 ))
 
-            # ==============================
-            # MERGE INPUT + REFERENCE
-            # ==============================
-            df_input_plot = df_des.copy()
-            df_input_plot["Dataset"] = "Input"
+                # ==============================
+                # REFERENCE COMPOUNDS
+                # ==============================
+                if "desirability_ref_df" in st.session_state:
 
-            df_ref_plot = None
-            if "desirability_ref_df" in st.session_state:
-                df_ref_plot = st.session_state.desirability_ref_df.copy()
-                df_ref_plot["Dataset"] = "Reference"
+                    df_ref_plot = st.session_state.desirability_ref_df.copy()
 
-            # ------------------------------
-            # CONCAT
-            # ------------------------------
-            df_all = pd.concat(
-                [df_input_plot, df_ref_plot],
-                ignore_index=True
-            )
+                    df_ref_plot = df_ref_plot.sort_values(by=score_col, ascending=False)
 
-            # ------------------------------
-            # Name X
-            # ------------------------------
-            def get_name(row):
-                if row["Dataset"] == "Reference":
-                    if pd.notna(row.get("name")):
-                        return str(row["name"])
-                    elif pd.notna(row.get("molecule_name")):
-                        return str(row["molecule_name"])
-                    elif pd.notna(row.get("ID")):
+                    if "ID" in df_ref_plot.columns:
+                        x_ref = df_ref_plot["ID"].astype(str)
+                    else:
+                        x_ref = df_ref_plot.index.astype(str)
+
+                    y_ref = df_ref_plot[score_col]
+
+                    fig.add_trace(go.Scatter(
+                        x=x_ref,
+                        y=y_ref,
+                        mode='lines+markers',
+                        name='Reference compounds',
+                        line=dict(color='firebrick', width=2, dash='dash'),
+                        marker=dict(size=6, color='firebrick'),
+                        fill='tozeroy',
+                        fillcolor='rgba(178,34,34,0.10)'
+                    ))
+
+                # ==============================
+                # MERGE INPUT + REFERENCE
+                # ==============================
+                df_input_plot = df_des.copy()
+                df_input_plot["Dataset"] = "Input"
+
+                df_ref_plot = None
+                if "desirability_ref_df" in st.session_state:
+                    df_ref_plot = st.session_state.desirability_ref_df.copy()
+                    df_ref_plot["Dataset"] = "Reference"
+
+                # ------------------------------
+                # CONCAT
+                # ------------------------------
+                df_all = pd.concat(
+                    [df_input_plot, df_ref_plot],
+                    ignore_index=True
+                )
+
+                # ------------------------------
+                # Name X
+                # ------------------------------
+                def get_name(row):
+                    if row["Dataset"] == "Reference":
+                        if pd.notna(row.get("name")):
+                            return str(row["name"])
+                        elif pd.notna(row.get("molecule_name")):
+                            return str(row["molecule_name"])
+                        elif pd.notna(row.get("ID")):
+                            return str(row["ID"])
+                        else:
+                            return str(row.name)
+
+                    # Input compounds
+                    if pd.notna(row.get("ID")):
                         return str(row["ID"])
                     else:
                         return str(row.name)
 
-                # Input compounds
-                if pd.notna(row.get("ID")):
-                    return str(row["ID"])
+
+                df_all["Compound_name"] = df_all.apply(get_name, axis=1)
+
+                # ==============================
+                # ORDER BY SCORE
+                # ==============================
+                df_all = df_all.sort_values(by=score_col, ascending=False).reset_index(drop=True)
+
+                # eje X numérico común
+                df_all["x_pos"] = np.arange(len(df_all))
+
+                # ==============================
+                # SPLIT DATASETS
+                # ==============================
+                df_input_final = df_all[df_all["Dataset"] == "Input"]
+                df_ref_final = df_all[df_all["Dataset"] == "Reference"]
+
+                fig = go.Figure()
+
+                # ------------------------------
+                # INPUT
+                # ------------------------------
+                fig.add_trace(go.Scatter(
+                    x=df_input_final["x_pos"],
+                    y=df_input_final[score_col],
+                    mode='lines+markers',
+                    name='Input compounds',
+                    line=dict(color='royalblue', width=3),
+                    marker=dict(size=8),
+                    fill='tozeroy',
+                    fillcolor='rgba(65,105,225,0.15)'
+                ))
+
+                # ------------------------------
+                # REFERENCE
+                # ------------------------------
+                fig.add_trace(go.Scatter(
+                    x=df_ref_final["x_pos"],
+                    y=df_ref_final[score_col],
+                    mode='lines+markers',
+                    name='Reference compounds',
+                    line=dict(color='firebrick', width=2, dash='dash'),
+                    marker=dict(size=6),
+                    fill='tozeroy',
+                    fillcolor='rgba(178,34,34,0.10)'
+                ))
+
+                # ==============================
+                # REFERENCE Q1 THRESHOLD
+                # ==============================
+                if ref_q1_score is not None:
+
+                    fig.add_hline(
+                        y=ref_q1_score,
+                        line_dash="dot",
+                        line_color="darkgreen",
+                        line_width=2,
+                        annotation_text=f"Reference Q1 = {ref_q1_score:.3f}",
+                        annotation_position="top right"
+                    )
+
+                # ==============================
+                # X and Y AXIS CONFIGURATION
+                # ==============================
+                fig.update_layout(
+                    xaxis=dict(
+                        title="Compound",
+                        tickmode='array',
+                        tickvals=df_all["x_pos"],
+                        ticktext=df_all["Compound_name"],
+                        tickangle=45
+                    ),
+                    yaxis_title="Desirability",
+                    template="simple_white",
+                    hovermode="x unified",
+                    legend=dict(title="Dataset")
+                )
+
+                st.plotly_chart(fig, use_container_width=True) 
+
+                            # -------- pie de figura --------
+                st.markdown(
+                    """
+                    *Desirability scores for the input compounds (blue) and the reference compounds (red), 
+                    ranked from highest to lowest score. The dotted horizontal line indicates the first quartile (Q1) of the reference compounds. 
+                    Using this value as the prioritization threshold would recover approximately 75% of the reference compounds.*
+                    """
+                )
+
+            # ========================================================
+            # SHOW DESIRABILITY TABLE (FINAL OUTPUT)
+            # ========================================================
+            if df_des is not None:
+
+                # ----------------------------------------------------
+                # Identify desirability type
+                # ----------------------------------------------------
+
+                if (
+                    "desirability_df" in st.session_state
+                    and df_des is st.session_state.desirability_df
+                ):
+                    desirability_title = (
+                        "Linear desirability results (Hit identification)"
+                    )
+
+                elif (
+                    "desirability_geo_df" in st.session_state
+                    and df_des is st.session_state.desirability_geo_df
+                ):
+                    desirability_title = (
+                        "Geometric desirability results (Lead/Candidate stage)"
+                    )
+
                 else:
-                    return str(row.name)
+                    desirability_title = "Desirability results"
 
+                # ====================================================
+                # TWO-COLUMN LAYOUT
+                # ====================================================
 
-            df_all["Compound_name"] = df_all.apply(get_name, axis=1)
+                col1, col2 = st.columns(2)
 
-            # ==============================
-            # ORDER BY SCORE
-            # ==============================
-            df_all = df_all.sort_values(by=score_col, ascending=False).reset_index(drop=True)
-
-            # eje X numérico común
-            df_all["x_pos"] = np.arange(len(df_all))
-
-            # ==============================
-            # SPLIT DATASETS
-            # ==============================
-            df_input_final = df_all[df_all["Dataset"] == "Input"]
-            df_ref_final = df_all[df_all["Dataset"] == "Reference"]
-
-            fig = go.Figure()
-
-            # ------------------------------
-            # INPUT
-            # ------------------------------
-            fig.add_trace(go.Scatter(
-                x=df_input_final["x_pos"],
-                y=df_input_final[score_col],
-                mode='lines+markers',
-                name='Input compounds',
-                line=dict(color='royalblue', width=3),
-                marker=dict(size=8),
-                fill='tozeroy',
-                fillcolor='rgba(65,105,225,0.15)'
-            ))
-
-            # ------------------------------
-            # REFERENCE
-            # ------------------------------
-            fig.add_trace(go.Scatter(
-                x=df_ref_final["x_pos"],
-                y=df_ref_final[score_col],
-                mode='lines+markers',
-                name='Reference compounds',
-                line=dict(color='firebrick', width=2, dash='dash'),
-                marker=dict(size=6),
-                fill='tozeroy',
-                fillcolor='rgba(178,34,34,0.10)'
-            ))
-
-            # ==============================
-            # REFERENCE Q1 THRESHOLD
-            # ==============================
-            if ref_q1_score is not None:
-
-                fig.add_hline(
-                    y=ref_q1_score,
-                    line_dash="dot",
-                    line_color="darkgreen",
-                    line_width=2,
-                    annotation_text=f"Reference Q1 = {ref_q1_score:.3f}",
-                    annotation_position="top right"
-                )
-
-            # ==============================
-            # X and Y AXIS CONFIGURATION
-            # ==============================
-            fig.update_layout(
-                xaxis=dict(
-                    title="Compound",
-                    tickmode='array',
-                    tickvals=df_all["x_pos"],
-                    ticktext=df_all["Compound_name"],
-                    tickangle=45
-                ),
-                yaxis_title="Desirability",
-                template="simple_white",
-                hovermode="x unified",
-                legend=dict(title="Dataset")
-            )
-
-            st.plotly_chart(fig, use_container_width=True) 
-
-                        # -------- pie de figura --------
-            st.markdown(
-                """
-                *Desirability scores for the input compounds (blue) and the reference compounds (red), 
-                ranked from highest to lowest score. The dotted horizontal line indicates the first quartile (Q1) of the reference compounds. 
-                Using this value as the prioritization threshold would recover approximately 75% of the reference compounds.*
-                """
-            )
-
-        # ========================================================
-        # SHOW DESIRABILITY TABLE (FINAL OUTPUT)
-        # ========================================================
-        if df_des is not None:
-
-            if "desirability_df" in st.session_state and df_des is st.session_state.desirability_df:
-                st.markdown("#### Linear desirability results (Hit identification)")
-
-            elif "desirability_geo_df" in st.session_state and df_des is st.session_state.desirability_geo_df:
-                st.markdown("#### Geometric desirability results (Lead/Candidate stage)")
-
-            st.dataframe(df_des, use_container_width=True)
-
-            if st.session_state.get("use_example", False) and os.path.exists("example/Linear_desirability_heatmap.png"):
-            
-                st.image("example/Linear_desirability_heatmap.png")
-            
-            else:
-                # ===== Heatmap =====
-                df_heatmap = plot_desirability_heatmap(df_des)
-                fig = render_heatmap(df_heatmap)
-                st.pyplot(fig)
-
-    else:
-        st.info("Provide a reference dataset (ChEMBL or ATC) and input molecules to compute similarity.")
-
-    #========================== CHEMICAL SIMILARITY =============================
-
-    #=========== Reference dataset selection (ChEMBL or DrugBank ATC)  ===========
-    # This block determines which reference chemical dataset
-    # is available in the Streamlit session state and sets:
-    #   - df_ref: dataframe containing reference molecules
-    #   - id_col: column with compound identifier
-    #   - smiles_col: column containing SMILES strings
-    # Priority is given to ChEMBL if both are present.
-
-    # ==============================
-    # CHEMICAL SIMILARITY
-    # ==============================
-
-    df_ref = None
-    id_col = None
-    smiles_col = None
-    current_source = None
-
-    if atc_code and (
-    "df_drugbank_atc" in st.session_state
-    and not st.session_state.df_drugbank_atc.empty
-    ):
-        df_ref = st.session_state.df_drugbank_atc.copy()
-        id_col = "name"
-        smiles_col = "smiles"
-        current_source = "atc"
-
-    elif chembl_target and (
-        "chembl_df" in st.session_state
-        and not st.session_state.chembl_df.empty
-    ):
-        df_ref = st.session_state.chembl_df.copy()
-        id_col = "molecule_chembl_id"
-        smiles_col = "smiles"
-        current_source = "chembl"
-
-    # -----------------------------
-    # Reset cache for similarity calculations if reference source changes
-    # -----------------------------
-
-    if st.session_state.get("similarity_source") != current_source:
-        st.session_state.pop("similarity_df", None)
-        st.session_state["similarity_source"] = current_source
-
-    # ==========================================================
-    # Execute chemical similarity workflow only if reference dataset and input molecules are available
-    # ==========================================================
-
-    if df_ref is not None and smiles_list:
-
-        st.markdown("## Chemical Similarity (ChEMBL / ATC)")
-
-        df_proc = df_ref[[smiles_col, id_col]].dropna().copy()
-
-        processed = df_proc.apply(process_molecule_row, axis=1, result_type="expand")
-        df_proc = pd.concat([df_proc, processed], axis=1)
-
-        df_proc = df_proc[df_proc["error"].isna()].copy()
-
-        df_proc["curated_smiles"] = df_proc["curated_smiles"].astype(str)
-        df_proc[id_col] = df_proc[id_col].astype(str)
-
-        df_proc = df_proc.drop_duplicates(
-            subset=[id_col, "curated_smiles"]
-        ).reset_index(drop=True)
-
-    # ==========================================================
-    # Choose similarity workflow based on input type:
-    # ==========================================================
-
-    # -------- CASE 1: Multiple molecules (CSV input) → show similarity heatmap with clustering --------
-    if "input_df" in st.session_state and isinstance(st.session_state.input_df, pd.DataFrame):
-
-        df_query = st.session_state.input_df.copy()
-
-        processed_q = df_query.apply(process_molecule_row, axis=1, result_type="expand")
-        df_query = pd.concat([df_query, processed_q], axis=1)
-
-        df_query = df_query[df_query["error"].isna()].copy()
-
-        df_query["curated_smiles"] = df_query["curated_smiles"].astype(str)
-
-        if len(df_query) > 1:
-
-            st.markdown("### Similarity Heatmap (Clustering)")  
-            if not use_loaded_values:
-                df_sim_matrix = plot_heatmap_similitud(
-                    df_query,
-                    df_proc,
-                    smiles_col="curated_smiles",
-                    id_col_query="ID",
-                    id_col_ref=id_col
-                )
-            else:
-                df_sim_matrix = st.session_state["df_sim_matrix"]
-                st.image("example/heatmap.png")
-
-    
-        st.markdown(
-            """
-            *Heatmap of structural similarity between query compounds (rows) and reference compounds (columns), 
-            computed using Morgan fingerprints (radius = 2, 2048 bits) and the Tanimoto coefficient. 
-            Hierarchical clustering based on Tanimoto distance (1 - similarity) organizes compounds 
-            according to their structural similarity.*
-            """
-        )
-
-        # -------- columnas de referencia --------
-        sim_cols = [c for c in df_sim_matrix.columns if c != "Mean_Similarity"]
-
-        # -------- highlight --------
-        def highlight_max_ref(row):
-            max_val = row[sim_cols].max()
-            return [
-                "background-color: #2E7D32; color: white; font-weight: bold;"
-                if (col in sim_cols and val == max_val) else ""
-                for col, val in row.items()
-            ]
-
-        styled_df = df_sim_matrix.style.apply(highlight_max_ref, axis=1)
-
-        # -------- Table --------
-        st.markdown("### Similarity Matrix")
-
-        st.dataframe(
-            styled_df,
-            use_container_width=True
-        )
-
-    # -------- CASE 2: Single molecule (manual input) --------
-    else:
-
-        input_df = pd.DataFrame({"smiles": [smiles_list[0]]})
-
-        input_proc = input_df.apply(process_molecule_row, axis=1, result_type="expand")
-
-        if not input_proc["error"].isna().iloc[0]:
-
-            st.error("Input SMILES could not be standardized.")
-
-        else:
-
-            curated_input = str(input_proc["curated_smiles"].iloc[0])
-
-            if "similarity_df" not in st.session_state:
-
-                with st.spinner("Calculating chemical similarity..."):
-                    st.session_state.similarity_df = calcular_similitud(
-                        input_smiles=curated_input,
-                        df_ref=df_proc,
-                        smiles_col="curated_smiles",
-                        id_col=id_col
-                    )
-
-            visualizar_top_similares(
-                input_smiles=curated_input,
-                df_sim=st.session_state.similarity_df,
-                top_n=5,
-            )
-
-            fig = plot_similarity_bars(
-                st.session_state.similarity_df,
-                top_n=5
-            )
-
-            st.pyplot(fig)
-
-        st.markdown(
-            "Similarity computed using Morgan fingerprints (2048 bits) "
-            "and Tanimoto coefficient."
-    )
-
-    # ============================================================
-    # RADAR PLOTS 
-    # ============================================================
-
-    st.markdown("---")
-    st.markdown("## Compound Profile")
-
-    if (
-        ref_key is not None
-        and not input_adme_df.empty
-        and st.session_state.selected_adme_props
-    ):
-
-        # ========================================================
-        # SELECT ADME COLUMNS
-        # ========================================================
-
-        selected_cols = [
-            map_columns_perc[p]
-            for p in st.session_state.selected_adme_props
-            if p in map_columns_perc
-        ]
-
-        # ========================================================
-        # VALIDATE REQUIRED COLUMNS
-        # ========================================================
-
-        missing_cols = [
-            col
-            for col in selected_cols
-            if (
-                col not in input_adme_df.columns
-                or col not in ref_df.columns
-            )
-        ]
-
-        if missing_cols:
-
-            st.warning(
-                f"Missing required ADME columns: {missing_cols}"
-            )
-
-        else:
-
-            # ====================================================
-            # REFERENCE MIN / MAX
-            # ====================================================
-
-            min_df = pd.DataFrame(
-                [ref_df[selected_cols].min()]
-            )
-
-            max_df = pd.DataFrame(
-                [ref_df[selected_cols].max()]
-            )
-
-            # ====================================================
-            # MOLECULE PAGINATION
-            # ====================================================
-
-            n = len(input_adme_df)
-
-            molecules_per_page = 1
-
-            total_pages = (
-                (n - 1) // molecules_per_page + 1
-            )
-
-            pages = list(range(total_pages))
-
-            # IDs of input molecules
-            molecule_ids = [
-                str(x)
-                for x in input_adme_df["ID"].tolist()
-            ] if "ID" in input_adme_df.columns else [
-                f"Compound {i+1}"
-                for i in range(n)
-            ]
-
-            # ====================================================
-            # PAGE SELECTOR
-            # ====================================================
-
-            page = st.pills(
-                "Select molecule",
-                options=pages,
-                default=0,
-                selection_mode="single",
-                format_func=lambda x: molecule_ids[x]
-            )
-
-            # Safety check
-            if page is None:
-                page = 0
-
-            # ====================================================
-            # SELECT CURRENT MOLECULE
-            # ====================================================
-
-            start_idx = page * molecules_per_page
-            end_idx = start_idx + molecules_per_page
-
-            page_df = input_adme_df.iloc[
-                start_idx:end_idx
-            ]
-
-            # ====================================================
-            # DISPLAY CURRENT MOLECULE
-            # ====================================================
-
-            for i, (_, row) in enumerate(
-                page_df.iterrows()
-            ):
-
-                compound_name = str(
-                    row.get(
-                        "ID",
-                        f"Compound {start_idx + i + 1}"
-                    )
-                )
-
-                col1, col2 = st.columns(
-                    [1, 1.8]
-                )
-
-                # ==================================================
-                # COLUMN 1 → MOLECULE
-                # ==================================================
+                # ====================================================
+                # COLUMN 1 → DESIRABILITY TABLE
+                # ====================================================
 
                 with col1:
 
                     st.markdown(
-                        f"### {compound_name}"
+                        f"#### {desirability_title}"
                     )
 
-                    image_name = (
-                        "comp_"
-                        + compound_name.replace(".", "_")
-                        + ".jpg"
+                    st.dataframe(
+                        df_des,
+                        use_container_width=True,
+                        hide_index=True
                     )
 
-                    example_path = (
-                        f"example/{image_name}"
-                    )
-
-                    # ------------------------------
-                    # Example image
-                    # ------------------------------
-
-                    if (
-                        st.session_state.get(
-                            "use_example",
-                            False
-                        )
-                        and os.path.exists(
-                            example_path
-                        )
-                    ):
-
-                        st.image(
-                            example_path,
-                            use_container_width=True
-                        )
-
-                    # ------------------------------
-                    # Generate molecule
-                    # ------------------------------
-
-                    else:
-
-                        if "smiles" in input_adme_df.columns:
-
-                            mol = Chem.MolFromSmiles(
-                                row["smiles"]
-                            )
-
-                            if mol:
-
-                                mol_img = (
-                                    Chem.Draw.MolToImage(
-                                        mol,
-                                        size=(500, 500)
-                                    )
-                                )
-
-                                st.image(
-                                    mol_img,
-                                    use_container_width=True
-                                )
-
-                            else:
-
-                                st.error(
-                                    "Could not generate "
-                                    "molecule structure."
-                                )
-
-                        else:
-
-                            st.warning(
-                                "SMILES column not available."
-                            )
-
-                # ==================================================
-                # COLUMN 2 → RADAR
-                # ==================================================
+                # ====================================================
+                # COLUMN 2 → DESIRABILITY HEATMAP
+                # ====================================================
 
                 with col2:
 
-                    st.markdown(
-                        "### ADMET Profile"
-                    )
-
-                    radar_name = (
-                        compound_name.replace(
-                            ".", "_"
-                        )
-                        + ".png"
-                    )
-
-                    radar_path = (
-                        f"example/{radar_name}"
-                    )
-
-                    # ------------------------------
-                    # Create compound dataframe
-                    # ------------------------------
-
-                    comp_df = pd.DataFrame(
-                        [row[selected_cols]]
-                    )
-
-                    comp_df["ID"] = (
-                        compound_name
-                    )
-
-                    # ------------------------------
-                    # Example radar
-                    # ------------------------------
+                    st.markdown("#### Desirability Profile")
 
                     if (
-                        st.session_state.get(
-                            "use_example",
-                            False
-                        )
+                        st.session_state.get("use_example", False)
                         and os.path.exists(
-                            radar_path
+                            "example/Linear_desirability_heatmap.png"
                         )
                     ):
 
                         st.image(
-                            radar_path,
+                            "example/Linear_desirability_heatmap.png",
                             use_container_width=True
                         )
 
-                    # ------------------------------
-                    # Generate radar
-                    # ------------------------------
-
                     else:
 
-                        try:
+                        # --------------------------------------------
+                        # Generate heatmap
+                        # --------------------------------------------
 
-                            fig = (
-                                plot_radar_with_min_max_df(
-                                    min_df=min_df,
-                                    max_df=max_df,
-                                    compuestos_df=comp_df,
-                                    selected_properties=(
-                                        st.session_state
-                                        .selected_adme_props
-                                    )
-                                )
-                            )
+                        df_heatmap = plot_desirability_heatmap(
+                            df_des
+                        )
 
-                            st.pyplot(
-                                fig,
-                                clear_figure=True
-                            )
+                        fig = render_heatmap(
+                            df_heatmap
+                        )
 
-                            plt.close(fig)
+                        st.pyplot(
+                            fig,
+                            clear_figure=True
+                        )
 
-                        except Exception as _e:
-
-                            st.warning(
-                                f"Failed to generate radar "
-                                f"for {compound_name}: {_e}"
-                            )
-        # ============================================================
-        # GLORYx METABOLITE PREDICTION
-        # ============================================================
-
-        st.markdown("#### Metabolite Prediction (GLORYx)")
-
-        # ------------------------------------------------------------
-        # Use the compound currently selected in Compound Profile
-        # ------------------------------------------------------------
-
-        if "smiles" in row.index and pd.notna(row["smiles"]):
-
-            smi_for_met = str(row["smiles"])
-
-            # --------------------------------------------------------
-            # Initialize metabolite storage
-            # --------------------------------------------------------
-
-            if "metabolites_by_compound" not in st.session_state:
-                st.session_state.metabolites_by_compound = {}
-
-            # --------------------------------------------------------
-            # Check whether metabolites were already calculated
-            # --------------------------------------------------------
-
-            has_metabolites = (
-                compound_name
-                in st.session_state.metabolites_by_compound
-            )
-
-            # --------------------------------------------------------
-            # Prediction button
-            # --------------------------------------------------------
-
-            if not has_metabolites:
-
-                if st.button(
-                    "Predict Metabolites (GLORYx)",
-                    key=f"predict_met_{compound_name}"
-                ):
-
-                    with st.spinner(
-                        f"Predicting metabolites for {compound_name}..."
-                    ):
-
-                        try:
-
-                            mols, labels, df_met = (
-                                calcular_metabolitos(
-                                    smi_for_met
-                                )
-                            )
-
-                            st.session_state.metabolites_by_compound[
-                                compound_name
-                            ] = df_met
-
-                            st.success(
-                                f"Metabolite prediction completed "
-                                f"for {compound_name}."
-                            )
-
-                        except Exception as e:
-
-                            st.error(
-                                f"Error predicting metabolites: {e}"
-                            )
+                        plt.close(fig)
 
             else:
 
                 st.info(
-                    f"Metabolites already predicted for "
-                    f"**{compound_name}**."
+                    "Provide a reference dataset (ChEMBL or ATC) "
+                    "and input molecules to compute similarity."
                 )
 
-            # --------------------------------------------------------
-            # Display results for current compound
-            # --------------------------------------------------------
 
-            if (
-                "metabolites_by_compound"
-                in st.session_state
-                and compound_name
-                in st.session_state.metabolites_by_compound
-            ):
 
-                df_met_current = (
-                    st.session_state
-                    .metabolites_by_compound[
-                        compound_name
-                    ]
-                )
+        #========================== CHEMICAL SIMILARITY =============================
 
-                visualizar_metabolitos(
-                    df_met_current
-                )
+        #=========== Reference dataset selection (ChEMBL or DrugBank ATC)  ===========
+        # This block determines which reference chemical dataset
+        # is available in the Streamlit session state and sets:
+        #   - df_ref: dataframe containing reference molecules
+        #   - id_col: column with compound identifier
+        #   - smiles_col: column containing SMILES strings
+        # Priority is given to ChEMBL if both are present.
 
-        else:
+        # ==============================
+        # CHEMICAL SIMILARITY
+        # ==============================
 
-            st.warning(
-                "SMILES not available for metabolite prediction."
+        df_ref = None
+        id_col = None
+        smiles_col = None
+        current_source = None
+
+        if atc_code and (
+        "df_drugbank_atc" in st.session_state
+        and not st.session_state.df_drugbank_atc.empty
+        ):
+            df_ref = st.session_state.df_drugbank_atc.copy()
+            id_col = "name"
+            smiles_col = "smiles"
+            current_source = "atc"
+
+        elif chembl_target and (
+            "chembl_df" in st.session_state
+            and not st.session_state.chembl_df.empty
+        ):
+            df_ref = st.session_state.chembl_df.copy()
+            id_col = "molecule_chembl_id"
+            smiles_col = "smiles"
+            current_source = "chembl"
+
+        # -----------------------------
+        # Reset cache for similarity calculations if reference source changes
+        # -----------------------------
+
+        if st.session_state.get("similarity_source") != current_source:
+            st.session_state.pop("similarity_df", None)
+            st.session_state["similarity_source"] = current_source
+
+        # ==========================================================
+        # Execute chemical similarity workflow only if reference dataset and input molecules are available
+        # ==========================================================
+
+        if df_ref is not None and smiles_list:
+
+            st.markdown("## Chemical Similarity (ChEMBL / ATC)")
+
+            df_proc = df_ref[[smiles_col, id_col]].dropna().copy()
+
+            processed = df_proc.apply(process_molecule_row, axis=1, result_type="expand")
+            df_proc = pd.concat([df_proc, processed], axis=1)
+
+            df_proc = df_proc[df_proc["error"].isna()].copy()
+
+            df_proc["curated_smiles"] = df_proc["curated_smiles"].astype(str)
+            df_proc[id_col] = df_proc[id_col].astype(str)
+
+            df_proc = df_proc.drop_duplicates(
+                subset=[id_col, "curated_smiles"]
+            ).reset_index(drop=True)
+
+        # ==========================================================
+        # Choose similarity workflow based on input type:
+        # ==========================================================
+
+        # -------- CASE 1: Multiple molecules (CSV input) --------
+        if (
+            "input_df" in st.session_state
+            and isinstance(st.session_state.input_df, pd.DataFrame)
+        ):
+
+            df_query = st.session_state.input_df.copy()
+
+            processed_q = df_query.apply(
+                process_molecule_row,
+                axis=1,
+                result_type="expand"
             )
 
-# ============================================================
-# WEIGHT PERTURBATION DEBUG (FOR TESTING PURPOSES)
-st.markdown("---")
-st.markdown("### Weight perturbation debug")
+            df_query = pd.concat(
+                [df_query, processed_q],
+                axis=1
+            )
 
-if st.button("Run sensitivity test"):
-    perturbed_sets, debug_df = perturb_weights_sensitivity(
-        filtered_weights,
-        perturbation=0.1
-    )
+            df_query = df_query[
+                df_query["error"].isna()
+            ].copy()
 
-    st.write("debug_df shape:", debug_df.shape)
-    st.dataframe(debug_df)
+            df_query["curated_smiles"] = (
+                df_query["curated_smiles"].astype(str)
+            )
+
+            # ==========================================================
+            # SIMILARITY ANALYSIS
+            # ==========================================================
+
+            if len(df_query) > 1:
+
+                # ======================================================
+                # TWO-COLUMN LAYOUT
+                # ======================================================
+
+                col1, col2 = st.columns(2)
+
+                # ======================================================
+                # COLUMN 1 → HEATMAP
+                # ======================================================
+
+                with col1:
+
+                    st.markdown("### Similarity Heatmap")
+
+                    if not use_loaded_values:
+
+                        # plot_heatmap_similitud calculates and displays
+                        # the heatmap and returns the similarity matrix
+                        df_sim_matrix = plot_heatmap_similitud(
+                            df_query,
+                            df_proc,
+                            smiles_col="curated_smiles",
+                            id_col_query="ID",
+                            id_col_ref=id_col
+                        )
+
+                    else:
+
+                        df_sim_matrix = st.session_state["df_sim_matrix"]
+
+                        st.image(
+                            "example/heatmap.png",
+                            use_container_width=True
+                        )
+
+                    st.markdown(
+                        """
+                        *Structural similarity between query and reference
+                        compounds based on Morgan fingerprints (radius = 2,
+                        2048 bits) and the Tanimoto coefficient.*
+                        """
+                    )
+
+                # ======================================================
+                # COLUMN 2 → SIMILARITY MATRIX
+                # ======================================================
+
+                with col2:
+
+                    st.markdown("### Similarity Matrix")
+
+                    # ------------------------------------------
+                    # Reference similarity columns
+                    # ------------------------------------------
+
+                    sim_cols = [
+                        c for c in df_sim_matrix.columns
+                        if c != "Mean_Similarity"
+                    ]
+
+                    # ------------------------------------------
+                    # Highlight maximum similarity
+                    # ------------------------------------------
+
+                    def highlight_max_ref(row):
+
+                        max_val = row[sim_cols].max()
+
+                        return [
+                            (
+                                "background-color: #2E7D32; "
+                                "color: white; "
+                                "font-weight: bold;"
+                            )
+                            if (
+                                col in sim_cols
+                                and val == max_val
+                            )
+                            else ""
+                            for col, val in row.items()
+                        ]
+
+                    styled_df = df_sim_matrix.style.apply(
+                        highlight_max_ref,
+                        axis=1
+                    )
+
+                    st.dataframe(
+                        styled_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    st.markdown(
+                        """
+                        *The highlighted value represents the most structurally
+                        similar reference compound for each input molecule.*
+                        """
+                    )
+
+            else:
+
+                st.info(
+                    "Similarity clustering requires at least two input molecules."
+                )
+        # -------- CASE 2: Single molecule (manual input) --------
+        else:
+
+            input_df = pd.DataFrame({"smiles": [smiles_list[0]]})
+
+            input_proc = input_df.apply(process_molecule_row, axis=1, result_type="expand")
+
+            if not input_proc["error"].isna().iloc[0]:
+
+                st.error("Input SMILES could not be standardized.")
+
+            else:
+
+                curated_input = str(input_proc["curated_smiles"].iloc[0])
+
+                if "similarity_df" not in st.session_state:
+
+                    with st.spinner("Calculating chemical similarity..."):
+                        st.session_state.similarity_df = calcular_similitud(
+                            input_smiles=curated_input,
+                            df_ref=df_proc,
+                            smiles_col="curated_smiles",
+                            id_col=id_col
+                        )
+
+                visualizar_top_similares(
+                    input_smiles=curated_input,
+                    df_sim=st.session_state.similarity_df,
+                    top_n=5,
+                )
+
+                fig = plot_similarity_bars(
+                    st.session_state.similarity_df,
+                    top_n=5
+                )
+
+                st.pyplot(fig)
+
+            st.markdown(
+                "Similarity computed using Morgan fingerprints (2048 bits) "
+                "and Tanimoto coefficient."
+        )
+
+        # ============================================================
+        # RADAR PLOTS 
+        # ============================================================
+
+        st.markdown("---")
+        st.markdown("## Compound Profile")
+
+        if (
+            ref_key is not None
+            and not input_adme_df.empty
+            and st.session_state.selected_adme_props
+        ):
+
+            # ========================================================
+            # SELECT ADME COLUMNS
+            # ========================================================
+
+            selected_cols = [
+                map_columns_perc[p]
+                for p in st.session_state.selected_adme_props
+                if p in map_columns_perc
+            ]
+
+            # ========================================================
+            # VALIDATE REQUIRED COLUMNS
+            # ========================================================
+
+            missing_cols = [
+                col
+                for col in selected_cols
+                if (
+                    col not in input_adme_df.columns
+                    or col not in ref_df.columns
+                )
+            ]
+
+            if missing_cols:
+
+                st.warning(
+                    f"Missing required ADME columns: {missing_cols}"
+                )
+
+            else:
+
+                # ====================================================
+                # REFERENCE MIN / MAX
+                # ====================================================
+
+                min_df = pd.DataFrame(
+                    [ref_df[selected_cols].min()]
+                )
+
+                max_df = pd.DataFrame(
+                    [ref_df[selected_cols].max()]
+                )
+
+                # ====================================================
+                # MOLECULE PAGINATION
+                # ====================================================
+
+                n = len(input_adme_df)
+
+                molecules_per_page = 1
+
+                total_pages = (
+                    (n - 1) // molecules_per_page + 1
+                )
+
+                pages = list(range(total_pages))
+
+                # IDs of input molecules
+                molecule_ids = [
+                    str(x)
+                    for x in input_adme_df["ID"].tolist()
+                ] if "ID" in input_adme_df.columns else [
+                    f"Compound {i+1}"
+                    for i in range(n)
+                ]
+
+                # ====================================================
+                # PAGE SELECTOR
+                # ====================================================
+
+                page = st.pills(
+                    "Select molecule",
+                    options=pages,
+                    default=0,
+                    selection_mode="single",
+                    format_func=lambda x: molecule_ids[x]
+                )
+
+                # Safety check
+                if page is None:
+                    page = 0
+
+                # ====================================================
+                # SELECT CURRENT MOLECULE
+                # ====================================================
+
+                start_idx = page * molecules_per_page
+                end_idx = start_idx + molecules_per_page
+
+                page_df = input_adme_df.iloc[
+                    start_idx:end_idx
+                ]
+
+                # ====================================================
+                # DISPLAY CURRENT MOLECULE
+                # ====================================================
+
+                for i, (_, row) in enumerate(
+                    page_df.iterrows()
+                ):
+
+                    compound_name = str(
+                        row.get(
+                            "ID",
+                            f"Compound {start_idx + i + 1}"
+                        )
+                    )
+
+                    col1, col2 = st.columns(
+                        [1, 1.8]
+                    )
+
+                    # ==================================================
+                    # COLUMN 1 → MOLECULE
+                    # ==================================================
+
+                    with col1:
+
+                        st.markdown(
+                            f"### {compound_name}"
+                        )
+
+                        image_name = (
+                            "comp_"
+                            + compound_name.replace(".", "_")
+                            + ".jpg"
+                        )
+
+                        example_path = (
+                            f"example/{image_name}"
+                        )
+
+                        # ------------------------------
+                        # Example image
+                        # ------------------------------
+
+                        if (
+                            st.session_state.get(
+                                "use_example",
+                                False
+                            )
+                            and os.path.exists(
+                                example_path
+                            )
+                        ):
+
+                            st.image(
+                                example_path,
+                                use_container_width=True
+                            )
+
+                        # ------------------------------
+                        # Generate molecule
+                        # ------------------------------
+
+                        else:
+
+                            if "smiles" in input_adme_df.columns:
+
+                                mol = Chem.MolFromSmiles(
+                                    row["smiles"]
+                                )
+
+                                if mol:
+
+                                    mol_img = (
+                                        Chem.Draw.MolToImage(
+                                            mol,
+                                            size=(500, 500)
+                                        )
+                                    )
+
+                                    st.image(
+                                        mol_img,
+                                        use_container_width=True
+                                    )
+
+                                else:
+
+                                    st.error(
+                                        "Could not generate "
+                                        "molecule structure."
+                                    )
+
+                            else:
+
+                                st.warning(
+                                    "SMILES column not available."
+                                )
+
+                    # ==================================================
+                    # COLUMN 2 → RADAR
+                    # ==================================================
+
+                    with col2:
+
+                        st.markdown(
+                            "### ADMET Profile"
+                        )
+
+                        radar_name = (
+                            compound_name.replace(
+                                ".", "_"
+                            )
+                            + ".png"
+                        )
+
+                        radar_path = (
+                            f"example/{radar_name}"
+                        )
+
+                        # ------------------------------
+                        # Create compound dataframe
+                        # ------------------------------
+
+                        comp_df = pd.DataFrame(
+                            [row[selected_cols]]
+                        )
+
+                        comp_df["ID"] = (
+                            compound_name
+                        )
+
+                        # ------------------------------
+                        # Example radar
+                        # ------------------------------
+
+                        if (
+                            st.session_state.get(
+                                "use_example",
+                                False
+                            )
+                            and os.path.exists(
+                                radar_path
+                            )
+                        ):
+
+                            st.image(
+                                radar_path,
+                                use_container_width=True
+                            )
+
+                        # ------------------------------
+                        # Generate radar
+                        # ------------------------------
+
+                        else:
+
+                            try:
+
+                                fig = (
+                                    plot_radar_with_min_max_df(
+                                        min_df=min_df,
+                                        max_df=max_df,
+                                        compuestos_df=comp_df,
+                                        selected_properties=(
+                                            st.session_state
+                                            .selected_adme_props
+                                        )
+                                    )
+                                )
+
+                                st.pyplot(
+                                    fig,
+                                    clear_figure=True
+                                )
+
+                                plt.close(fig)
+
+                            except Exception as _e:
+
+                                st.warning(
+                                    f"Failed to generate radar "
+                                    f"for {compound_name}: {_e}"
+                                )
+            # ============================================================
+            # GLORYx METABOLITE PREDICTION
+            # ============================================================
+
+            st.markdown("#### Metabolite Prediction (GLORYx)")
+
+            # ------------------------------------------------------------
+            # Use the compound currently selected in Compound Profile
+            # ------------------------------------------------------------
+
+            if "smiles" in row.index and pd.notna(row["smiles"]):
+
+                smi_for_met = str(row["smiles"])
+
+                # --------------------------------------------------------
+                # Initialize metabolite storage
+                # --------------------------------------------------------
+
+                if "metabolites_by_compound" not in st.session_state:
+                    st.session_state.metabolites_by_compound = {}
+
+                # --------------------------------------------------------
+                # Check whether metabolites were already calculated
+                # --------------------------------------------------------
+
+                has_metabolites = (
+                    compound_name
+                    in st.session_state.metabolites_by_compound
+                )
+
+                # --------------------------------------------------------
+                # Prediction button
+                # --------------------------------------------------------
+
+                if not has_metabolites:
+
+                    if st.button(
+                        "Predict Metabolites (GLORYx)",
+                        key=f"predict_met_{compound_name}"
+                    ):
+
+                        with st.spinner(
+                            f"Predicting metabolites for {compound_name}..."
+                        ):
+
+                            try:
+
+                                mols, labels, df_met = (
+                                    calcular_metabolitos(
+                                        smi_for_met
+                                    )
+                                )
+
+                                st.session_state.metabolites_by_compound[
+                                    compound_name
+                                ] = df_met
+
+                                st.success(
+                                    f"Metabolite prediction completed "
+                                    f"for {compound_name}."
+                                )
+
+                            except Exception as e:
+
+                                st.error(
+                                    f"Error predicting metabolites: {e}"
+                                )
+
+                else:
+
+                    st.info(
+                        f"Metabolites already predicted for "
+                        f"**{compound_name}**."
+                    )
+
+                # --------------------------------------------------------
+                # Display results for current compound
+                # --------------------------------------------------------
+
+                if (
+                    "metabolites_by_compound"
+                    in st.session_state
+                    and compound_name
+                    in st.session_state.metabolites_by_compound
+                ):
+
+                    df_met_current = (
+                        st.session_state
+                        .metabolites_by_compound[
+                            compound_name
+                        ]
+                    )
+
+                    visualizar_metabolitos(
+                        df_met_current
+                    )
+
+            else:
+
+                st.warning(
+                    "SMILES not available for metabolite prediction."
+                )
+
+    # ============================================================
+    # WEIGHT PERTURBATION DEBUG (FOR TESTING PURPOSES)
+    st.markdown("---")
+    st.markdown("### Weight perturbation debug")
+
+    if st.button("Run sensitivity test"):
+        perturbed_sets, debug_df = perturb_weights_sensitivity(
+            filtered_weights,
+            perturbation=0.1
+        )
+
+        st.write("debug_df shape:", debug_df.shape)
+        st.dataframe(debug_df)
 
 # ---------------------- Contact ----------------------
 st.markdown("---")
