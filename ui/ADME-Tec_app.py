@@ -53,6 +53,8 @@ from src.admet.desirability_conf import PROPERTY_CONFIG
 from pathlib import Path
 from src.admet.reference_analysis import compute_reference_variability, compute_reference_correlation, plot_reference_correlation
 from src.admet.Sensitive_test import perturb_weights_sensitivity
+from rdkit import Chem
+from src.admet.molecular_features import render_molecular_features
 
 
 # Robust TOML loader: prefer stdlib tomllib (Python 3.11+), fall back to the 'toml' package.
@@ -1983,6 +1985,21 @@ if (
                     start_idx:end_idx
                 ]
 
+
+                # ============================================================
+                # CURRENT MOLECULE
+                # ============================================================
+
+                if not page_df.empty:
+
+                    row = page_df.iloc[0]
+
+                    compound_name = str(
+                        row.get(
+                            "ID",
+                            f"Compound {start_idx + 1}"
+                        )
+                    )
                 # ====================================================
                 # DISPLAY CURRENT MOLECULE
                 # ====================================================
@@ -2080,6 +2097,36 @@ if (
                                     "SMILES column not available."
                                 )
 
+                        # ========================================================
+                        # MOLECULAR FEATURES
+                        # ========================================================
+
+                        st.markdown("#### Molecular Features")
+
+                        if (
+                            "smiles" in row.index
+                            and pd.notna(row["smiles"])
+                        ):
+
+                            mol = Chem.MolFromSmiles(
+                                str(row["smiles"])
+                            )
+
+                            if mol is not None:
+
+                                render_molecular_features(mol)
+
+                            else:
+
+                                st.warning(
+                                    "Could not generate molecular features."
+                                )
+
+                        else:
+
+                            st.warning(
+                                "SMILES not available for molecular features."
+                            )
                     # ==================================================
                     # COLUMN 2 → RADAR
                     # ==================================================
@@ -2165,6 +2212,8 @@ if (
                                     f"Failed to generate radar "
                                     f"for {compound_name}: {_e}"
                                 )
+            
+
             # ============================================================
             # GLORYx METABOLITE PREDICTION
             # ============================================================
