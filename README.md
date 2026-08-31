@@ -163,11 +163,11 @@ The application will start a local Streamlit server and provide a URL that can b
 
 ### Basic workflow
 
-1. Enter one or more molecular **SMILES**.
-2. Optionally provide a **ChEMBL ID**, **ATC code**, target, or therapeutic indication. If you provide ChEMBL ID select target type ("agonist", "antagonist", "inhibitors", etc)
-3. Select the **drug discovery stage**.
-4. Define the relevant **target location**, when applicable.
-5. Click **Run ADME Analysis**.
+1. Enter one or more molecular SMILES.
+2. Optionally provide a ChEMBL ID, ATC code, target, or therapeutic indication. If you provide ChEMBL ID select target type ("agonist", "antagonist", "inhibitors", etc)
+3. Select the drug discovery stage.
+4. Define the relevant target location, when applicable.
+5. Click Run ADME Analysis.
 6. Select the ADMET properties to include in the desirability score
 7. Select weights for the selected proprerties. 
 8. Apply context-aware prioritization to compound lists.
