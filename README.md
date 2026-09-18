@@ -223,7 +223,6 @@ ADMETec:Interactive platform for context-aware ADMET analysis and compound prior
 
 Version 0.1.0 [Computer software].
 
-https://github.com/NanoBiostructuresRG-lab/chemvault
 ```
 
 For reproducibility, cite the **specific ADME-Tec version** used in the associated methods, software, or data-availability section.
