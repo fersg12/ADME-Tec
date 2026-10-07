@@ -6,6 +6,7 @@ import seaborn as sns
 from scipy.cluster.hierarchy import linkage
 import matplotlib.pyplot as plt 
 import numpy as np
+from molraptor import MorganFingerprintProfile, encode_fingerprints
 
 
 def calcular_similitud(
@@ -17,76 +18,121 @@ def calcular_similitud(
     n_bits: int = 2048,
 ):
     """
-    Compute Tanimoto similarity between an input compound and a reference dataset.
+    Compute Tanimoto similarity between an input compound and a reference dataset
+    using Morgan fingerprints generated with molraptor.
 
     Parameters
     ----------
     input_smiles : str
         SMILES string of the query compound.
+
     df_ref : pd.DataFrame
         DataFrame containing reference compounds.
+
     smiles_col : str
-        Column name in df_ref that contains SMILES strings.
+        Column name in df_ref containing SMILES strings.
+
     id_col : str | None
-        Optional identifier column (e.g., ChEMBL ID, ATC code).
+        Optional identifier column (e.g., ChEMBL ID or ATC code).
+
     radius : int
-        Radius for Morgan fingerprint (ECFP4 corresponds to radius=2).
+        Radius of the Morgan fingerprint. ECFP4 corresponds to radius=2.
+
     n_bits : int
         Length of the fingerprint bit vector.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame sorted by descending similarity.
+        DataFrame sorted by descending Tanimoto similarity.
     """
 
-    # Convert query SMILES into RDKit molecule object
-    mol_q = Chem.MolFromSmiles(input_smiles)
-    if mol_q is None:
-        raise ValueError("Invalid input SMILES")
-
-    # Generate Morgan fingerprint (circular fingerprint) for the query molecule
-    fp_q = AllChem.GetMorganFingerprintAsBitVect(
-        mol_q, radius, nBits=n_bits
+    # ---------------------------------------------------------
+    # 1. Define Morgan fingerprint profile
+    # ---------------------------------------------------------
+    profile = MorganFingerprintProfile(
+        radius=radius,
+        fp_size=n_bits,
+        include_chirality=False,
     )
 
+    # ---------------------------------------------------------
+    # 2. Encode query molecule
+    # ---------------------------------------------------------
+    query_result = encode_fingerprints(
+        [input_smiles],
+        profile,
+    )
+
+    if len(query_result.valid_indices) == 0:
+        raise ValueError("Invalid input SMILES")
+
+    fp_q = query_result.fingerprints[0].astype(np.uint8)
+
+    # ---------------------------------------------------------
+    # 3. Prepare reference SMILES
+    # ---------------------------------------------------------
+    ref_smiles = df_ref[smiles_col].fillna("").astype(str).tolist()
+
+    # ---------------------------------------------------------
+    # 4. Encode all reference molecules at once
+    # ---------------------------------------------------------
+    ref_result = encode_fingerprints(
+        ref_smiles,
+        profile,
+    )
+
+    fingerprints = ref_result.fingerprints.astype(np.uint8)
+
+    valid_indices = np.asarray(ref_result.valid_indices)
+
+    # ---------------------------------------------------------
+    # 5. Calculate Tanimoto similarity
+    # ---------------------------------------------------------
+    # Intersection = number of common bits
+    intersection = fingerprints @ fp_q
+
+    # Number of bits set in each fingerprint
+    fp_counts = fingerprints.sum(axis=1)
+    query_count = fp_q.sum()
+
+    # Union = A + B - intersection
+    union = fp_counts + query_count - intersection
+
+    # Avoid division by zero
+    similarities = np.divide(
+        intersection,
+        union,
+        out=np.zeros_like(intersection, dtype=float),
+        where=union != 0,
+    )
+    # ---------------------------------------------------------
+    # 6. Build results
+    # ---------------------------------------------------------
     rows = []
+    for i, original_idx in enumerate(valid_indices):
 
-    # Iterate through each reference compound
-    for _, row in df_ref.iterrows():
-        smi = row[smiles_col]
+        row = df_ref.iloc[original_idx]
 
-        # Convert reference SMILES to molecule
-        mol = Chem.MolFromSmiles(smi)
-        if mol is None:
-            continue  # Skip invalid SMILES
-
-        # Generate fingerprint for reference molecule
-        fp = AllChem.GetMorganFingerprintAsBitVect(
-            mol, radius, nBits=n_bits
-        )
-
-        # Compute Tanimoto similarity between query and reference
-        sim = DataStructs.TanimotoSimilarity(fp_q, fp)
-
-        # Store results
         rows.append(
             {
                 "Reference_ID": row[id_col] if id_col else None,
-                "Reference_SMILES": smi,
-                "Tanimoto_Similarity": sim,
+                "Reference_SMILES": row[smiles_col],
+                "Tanimoto_Similarity": similarities[i],
             }
         )
-
-    # Create DataFrame, sort by similarity (highest first), reset index
+    # ---------------------------------------------------------
+    # 7. Sort by similarity
+    # ---------------------------------------------------------
     df_sim = (
         pd.DataFrame(rows)
-        .sort_values("Tanimoto_Similarity", ascending=False)
+        .sort_values(
+            "Tanimoto_Similarity",
+            ascending=False,
+        )
         .reset_index(drop=True)
     )
-
     return df_sim
-
 
 def visualizar_top_similares(
     input_smiles: str,

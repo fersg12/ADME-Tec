@@ -1,88 +1,140 @@
-#chemical standardization
-"Based on code from: [DIFACQUIM GitHub] (https://github.com/DIFACQUIM/Cursos/blob/main/5_3_Curado_de_bases_de_datos.ipynb) and [Oxford Protein Informatics Group](https://www.blopig.com/blog/2024/09/out-of-the-box-rdkit-valid-is-an-imperfect-metric-a-review-of-the-kekulizeexception-and-nitrogen-protonation-to-correct-this/).<br>"
-### Import libraries
-#from joblib import Parallel, delayed
-#from rdkit.Chem.rdmolops import GetFormalCharge, RemoveStereochemistry
-from math import sqrt
+# Chemical standardization
+# Based on HarmonSmiles for molecular harmonization
+# and RDKit for validation and additional curation rules.
+
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 from rdkit import Chem
-from molvs.standardize import Standardizer
-from molvs.charge import Uncharger, Reionizer
-from molvs.fragment import LargestFragmentChooser
-from molvs.tautomer import TautomerCanonicalizer
-from molecular_rectifier import Rectifier
 from tqdm.auto import tqdm
+
+from harmonsmile import PubChemIngest, PubChemConfig, save_table
+
 tqdm.pandas()
 
 
-# --- Standardization and cleaning tools initialization ---
-STD = Standardizer()
-LFC = LargestFragmentChooser()
-UC = Uncharger()
-RI = Reionizer()
-TC = TautomerCanonicalizer()
+# ---------------------------------------------------------
+# Allowed elements
+# ---------------------------------------------------------
 
+ALLOWED_ELEMENTS = {
+    "H", "B", "C", "N", "O", "F",
+    "Si", "P", "S", "Cl", "Se", "Br", "I"
+}
+
+
+# ---------------------------------------------------------
+# Additional RDKit validation
+# ---------------------------------------------------------
+
+def validate_molecule(mol):
+    """
+    Applies additional curation rules after HarmonSmiles.
+
+    Returns
+    -------
+    str or None
+        Error type if the molecule fails a criterion.
+    """
+
+    if mol is None:
+        return "ParsingError"
+
+    # Check allowed elements
+    elements = {atom.GetSymbol() for atom in mol.GetAtoms()}
+
+    if not elements <= ALLOWED_ELEMENTS:
+        return "DisallowedElements"
+
+    # Check whether the molecule contains carbon
+    if not any(atom.GetSymbol() == "C" for atom in mol.GetAtoms()):
+        return "NotOrganic"
+
+    return None
+
+
+# ---------------------------------------------------------
+# Process one molecule
+# ---------------------------------------------------------
 
 def process_molecule_row(row):
     """
-    Processes a molecular entry from a DataFrame row.
-    - Parses and sanitizes the SMILES string.
-    - Rectifies valence issues.
-    - Removes forbidden elements.
-    - Verifies if the molecule is organic (at least one carbon atom).
-    - Neutralizes, ionizes, and standardizes the molecule.
+    Processes one molecular entry using HarmonSmiles
+    followed by additional RDKit-based validation.
 
-    Parameters:
-    row (pd.Series): A row from a DataFrame containing molecular data in the 'smiles' column.
+    Parameters
+    ----------
+    row : pandas.Series
+        DataFrame row containing a 'smiles' column.
 
-    Returns:
-    dict: A dictionary containing the processed molecular data, including curated SMILES, and any errors encountered during processing.
+    Returns
+    -------
+    dict
+        Original molecular information plus curated_smiles
+        and error information.
     """
+
     smiles = row["smiles"]
     result = row.to_dict()
 
     try:
-        # Check validity of SMILES
+
+        # -------------------------------------------------
+        # 1. Parse original SMILES
+        # -------------------------------------------------
+
         mol = Chem.MolFromSmiles(smiles, sanitize=True)
+
         if mol is None:
-            result.update({"error": "ParsingError"})
+            result["error"] = "ParsingError"
             return result
 
-        # Rectify valence issues
-        rectified = Rectifier(mol, valence_correction="charge")
-        rectified.fix_issues()
-        mol = rectified.mol
+        # -------------------------------------------------
+        # 2. Harmonize SMILES
+        # -------------------------------------------------
 
-        # Full sanitization and hydrogen removal
-        Chem.SanitizeMol(mol, sanitizeOps=Chem.SanitizeFlags.SANITIZE_ALL)
-        mol = Chem.RemoveHs(mol)
+        # TODO:
+        # Replace this section with the HarmonSmiles API
+        # used by your installed version.
+        #
+        # harmonized_smiles = harmonize(smiles)
 
-        # Standardize (instead of using rdMolStandardize)
-        mol = STD.standardize(mol)
+        # Temporary RDKit representation
+        harmonized_smiles = Chem.MolToSmiles(
+            mol,
+            canonical=True
+        )
 
-        # Keep only the largest fragment
-        mol = LFC(mol)
+        # -------------------------------------------------
+        # 3. Reconstruct harmonized molecule
+        # -------------------------------------------------
 
-        # Neutralize and ionize
-        mol = UC(mol)
-        mol = RI(mol)
-        mol = TC(mol)
+        mol = Chem.MolFromSmiles(
+            harmonized_smiles,
+            sanitize=True
+        )
 
-        # Allowed elements verification -- pasar a json
-        allowed_elements = {"H", "B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Se", "Br", "I"}
-        if not {atom.GetSymbol() for atom in mol.GetAtoms()} <= allowed_elements:
-            result.update({"error": "DisallowedElements"})
+        if mol is None:
+            result["error"] = "HarmonizationError"
             return result
 
-        # Organic molecule verification
-        if sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == "C") < 1:
-            result.update({"error": "NotOrganic"})
+        # -------------------------------------------------
+        # 4. Additional validation
+        # -------------------------------------------------
+
+        error = validate_molecule(mol)
+
+        if error is not None:
+            result["error"] = error
             return result
 
-        curated_smiles = Chem.MolToSmiles(mol, canonical=True)
+        # -------------------------------------------------
+        # 5. Generate final canonical SMILES
+        # -------------------------------------------------
+
+        curated_smiles = Chem.MolToSmiles(
+            mol,
+            canonical=True
+        )
 
         result.update({
             "curated_smiles": curated_smiles,
@@ -90,13 +142,7 @@ def process_molecule_row(row):
         })
 
     except Exception as e:
-        result.update({"error": str(e)})
+
+        result["error"] = str(e)
 
     return result
-
-
-# Process the DataFrame parallelly through the rows
-#def process_dataframe(df, n_jobs = -1):
-  #  results = Parallel(n_jobs = n_jobs)(delayed(process_molecule_row)(row) for _, row in df.iterrows())
-    
-   # return pd.DataFrame(results)
