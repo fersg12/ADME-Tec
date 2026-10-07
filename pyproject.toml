@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=82.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adme-tec"
+version = "0.1.0"
+description = "Interactive platform for ADMET analysis, prediction, and visualization"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    # Core
+    "numpy",
+    "pandas>=2.0",
+    "requests>=2.28",
+    "openpyxl>=3.1",
+
+    # Chemoinformatics
+    "rdkit>=2025.9.5",
+
+    # ADMET-AI
+    "admet-ai",
+    "chemprop>=2.2.2",
+    "lightning",
+    "torch==2.8.0",
+    "tqdm>=4.66.3",
+    "typed-argument-parser>=1.11.0",
+    "seaborn",
+
+    # HarmonSMILE
+    "harmonsmile==0.3.4",
+
+    # Molraptor
+    "molraptor==0.4.1",
+
+
+    # Visualization
+    "plotly",
+
+    # Chemical name / structure utilities
+    "cirpy",
+
+    # PDF / SVG utilities
+    "svglib",
+    "pdf2image",
+
+    # Web application
+    "streamlit",
+]
+
+[project.optional-dependencies]
+web = [
+    "flask",
+    "gunicorn>=22.0.0",
+]
+
+dev = [
+    "pytest",
+]
