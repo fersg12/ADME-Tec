@@ -596,7 +596,7 @@ if smiles_list:
                 use_container_width=True
             )
 
-        # STORE ALL NON-ATC COLUMNS AS ADME DATA
+        # STORE ALL NON-ATC COLUMNS AS ADMET DATA
         # -------------------------------------------------
         exclude_cols = [
             "atc",
@@ -901,9 +901,7 @@ if (
                 None
             )
 
-            st.success(
-                "ADMET properties selected."
-            )
+
 
 
     # ========================================================
@@ -987,15 +985,7 @@ if (
                         None
                     )
 
-                    st.success(
-                        "ADMET weights saved successfully."
-                    )
 
-        else:
-
-            st.success(
-                "ADMET weights confirmed."
-            )
 
 
     # ========================================================
@@ -1082,51 +1072,6 @@ if (
         and weights_ready
         and (is_hit_phase or is_geo_phase)
     )
-
-
-    # ========================================================
-    # DEBUG INFORMATION
-    # ========================================================
-
-    with st.expander(
-        "Desirability calculation status",
-        expanded=False
-    ):
-
-        st.write(
-            "Selected properties:",
-            selected_ui_props
-        )
-
-        st.write(
-            "Internal properties:",
-            selected_internal_props
-        )
-
-        st.write(
-            "Weights:",
-            filtered_weights
-        )
-
-        st.write(
-            "Weights confirmed:",
-            weights_ready
-        )
-
-        st.write(
-            "Design phase:",
-            design_phase
-        )
-
-        st.write(
-            "Input molecules:",
-            len(input_adme_df)
-        )
-
-        st.write(
-            "Desirability enabled:",
-            enable_desirability
-        )
 
 
     # ========================================================
@@ -1252,9 +1197,6 @@ if (
                         )
 
 
-                st.success(
-                    "Desirability analysis completed."
-                )
 
 
         except Exception as e:
@@ -1637,6 +1579,30 @@ if (
         #   - smiles_col: column containing SMILES strings
         # Priority is given to ChEMBL if both are present.
 
+        # ==========================================================
+        # Structural descriptor selection
+        # ==========================================================
+
+        DESCRIPTOR_OPTIONS = {
+            "Morgan radius=2, 2048 bits": "Morgan",
+            "MACCS keys, 166 bits": "MACCS",
+            "RDKit fingerprints, 2048 bits": "RDKit",
+            "Atom Pair fingerprints": "Atom Pair",
+            "Topological Torsion fingerprints": "Topological Torsion",
+            "Layered fingerprints": "Layered",
+            "Feature Morgan fingerprints": "FeatMorgan",
+        }
+
+
+        descriptor_type = st.selectbox(
+            "Structural descriptor",
+            options=list(DESCRIPTOR_OPTIONS.keys()),
+            key="similarity_descriptor",
+        )
+
+        descriptor = DESCRIPTOR_OPTIONS[descriptor_type]
+
+        
         # ==============================
         # CHEMICAL SIMILARITY
         # ==============================
@@ -1720,6 +1686,7 @@ if (
             df_query = df_query[
                 df_query["error"].isna()
             ].copy()
+            
 
             df_query["curated_smiles"] = (
                 df_query["curated_smiles"].astype(str)
@@ -1754,7 +1721,11 @@ if (
                             df_proc,
                             smiles_col="curated_smiles",
                             id_col_query="ID",
-                            id_col_ref=id_col
+                            id_col_ref=id_col,
+                            descriptor=descriptor,
+                            radius=2,
+                            n_bits=2048,
+
                         )
 
                     else:
@@ -1851,14 +1822,30 @@ if (
 
                 curated_input = str(input_proc["curated_smiles"].iloc[0])
 
-                if "similarity_df" not in st.session_state:
+                similarity_key = (
+                    descriptor,
+                    current_source,
+                    curated_input,
+                    2,
+                    2048,
+                )
 
+                if st.session_state.get("similarity_key") != similarity_key:
+                    st.session_state.pop("similarity_df", None)
+                    st.session_state["similarity_key"] = similarity_key
+
+
+                # Calcular la similitud con el descriptor seleccionado
+                if "similarity_df" not in st.session_state:
                     with st.spinner("Calculating chemical similarity..."):
                         st.session_state.similarity_df = calcular_similitud(
                             input_smiles=curated_input,
                             df_ref=df_proc,
                             smiles_col="curated_smiles",
-                            id_col=id_col
+                            id_col=id_col,
+                            descriptor=descriptor,
+                            radius=2,
+                            n_bits=2048,
                         )
 
                 visualizar_top_similares(
@@ -1869,7 +1856,7 @@ if (
 
                 fig = plot_similarity_bars(
                     st.session_state.similarity_df,
-                    top_n=5
+                    top_n=5,
                 )
 
                 st.pyplot(fig)
