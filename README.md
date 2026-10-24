@@ -105,61 +105,45 @@ The platform is particularly useful when multiple candidate molecules need to be
 
 ## Prerequisites
 
-Before installing ADME-Tec, the following software is recommended:
+Before installing ADME-Tec, ensure that the following software is available:
 
-* **Python 3.10**
-* **Conda** or **Miniconda**
-* A compatible operating system such as Windows or Linux
+- **Python 3.12**
+- **Conda** or **Miniconda**
+- A compatible operating system, such as Windows or Linux
 
-The application is implemented using **Streamlit** and relies on cheminformatics and ADMET-related Python packages, including RDKit and ADMET-AI.
+ADME-Tec is built with **Streamlit** and relies on cheminformatics and ADMET-related Python packages, including RDKit and ADMET-AI. Compatible runtime dependencies are declared in `pyproject.toml`.
 
 ## Installation
 
-ADMETec can be installed and launched using a Conda environment. There may be some differences depending on the operating system; however, the software has been tested on both **Windows and Linux**.
+ADME-Tec can be installed and run in an isolated Conda environment. The following instructions apply to Windows and Linux, although minor differences may occur depending on the operating system.
 
-Clone the repository and move to the project directory:
-
-```bash
-git clone https://github.com/fersg12/ADME-Tec.git
-cd ADME-Tec
-```
-
-Create the Conda environment using the provided environment file:
+Create a Conda environment with Python 3.12:
 
 ```bash
-conda env create -f environment.yml
+conda create -n admetec_env python=3.12
 ```
 
 Activate the environment:
 
 ```bash
-conda activate Adme-Tec
+conda activate admetec_env
 ```
 
-### Dependency troubleshooting
-
-In some systems, dependency conflicts may occur during installation, particularly for ADMET-AI and related packages.
-
-If the complete environment cannot be resolved, an alternative is to install the dependencies required by **ADMET-AI version 1.3.1**, following the requirements specified by the corresponding library release.
-
-In addition, **svglib version 1.5.1** is required for the application.
-
-For example:
+From the root directory of the ADME-Tec repository, install the application and its development dependencies:
 
 ```bash
-pip install admet-ai==1.3.1
-pip install svglib==1.5.1
+python -m pip install -e ".[dev]"
 ```
 
-## Quick start
+## Quick Start
 
-After activating the Conda environment, launch the Streamlit application:
+After installation, launch the Streamlit application:
 
 ```bash
 streamlit run ui/ADME-Tec_app.py
 ```
 
-The application will start a local Streamlit server and provide a URL that can be opened in a web browser.
+Streamlit will start a local server and display a URL that you can open in your web browser to access the application.
 
 ### Basic workflow
 
