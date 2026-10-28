@@ -1,6 +1,6 @@
 # --- Categories ADMET ---
 categories_adme = {
-    "Molecular Properties": ["Molecular Weight", "HBA", "HBD", "TPSA", "LogP", "Stereo Centers", "Solubility"],
+    "Molecular Properties": ["Molecular Weight", "HBA", "HBD", "TPSA", "LogP", "Stereo Centers", "Solubility", "nRotatable Bonds *", "fsp3*", "Solubility (esol_mg/L) *", "pKa(stronger base) *", "LogD (pH 7.4) *"],
     "Absorption": ["Caco-2", "Bioavailability", "HIA", "PAMPA", "Pgp"],
     "Distribution": ["BBB penetration","BBB safe", "VDss", "PPBR"],
     "Metabolism": ["CYP1A2 inhibitor", "CYP2C19 inhibitor", "CYP2C9 inhibitor", "CYP2D6 inhibitor", "CYP3A4 inhibitor", "CYP2C9 Substrate", "CYP2D6 Substrate", "CYP3A4 Substrate"],
@@ -57,7 +57,12 @@ map_columns = {
     "SR-ATAD5": "SR-ATAD5", 
     "SR-HSE": "SR-HSE", 
     "SR-MMP": "SR-MMP", 
-    "SR-p53": "SR-p53"
+    "SR-p53": "SR-p53",
+    "nRotatable Bonds *": "prop_profile_num_rotatable_bonds",
+    "fsp3*": "prop_profile_fsp3",    
+    "Solubility (esol_mg/L) *": "prop_profile_solubility_esol_mg/L", 
+    "pKa(stronger base) *": "prop_profile_most_basic_pka",
+    "LogD (pH 7.4) *": "prop_profile_logd"
 }
 
 

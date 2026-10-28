@@ -60,6 +60,18 @@ PROPERTY_CONFIG = {
         "weight": "logP",
         "uncertainty": "utrapezoidal"
     },
+     "prop_profile_logd": {
+            "family": "trapezoidal",
+            "params": {
+                "a": "prop_profile_logd_trap[0]",
+                "b": "prop_profile_logd_trap[1]",
+                "c": "prop_profile_logd_trap[2]",
+                "d": "prop_profile_logd_trap[3]",
+                "floor": 0.05
+            },
+            "weight": "prop_profile_logd",
+            "uncertainty": "utrapezoidal"
+        },
 
     "hydrogen_bond_acceptors": {
         "family": "gaussian",
