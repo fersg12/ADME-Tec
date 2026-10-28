@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 # Path to the local DrugBank-derived CSV file containing ADME data
-DATA_PATH = os.path.join(os.path.dirname(__file__), "adme_ApprovedDrugs.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "AT_ADMET.csv")
 
 # Delimiter used inside multi-value DrugBank cells
 DRUGBANK_DELIMITER = ";"
@@ -102,7 +102,7 @@ def get_atc_adme_properties(atc_code: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Validate presence of SMILES column (case-insensitive check)
-    if "SMILES" not in [c.upper() for c in df_atc.columns]:
-        raise ValueError("'smiles' column not found in ApprovedDrugs.csv")
+    if "SMILES_Harmonized" not in [c.upper() for c in df_atc.columns]:
+        raise ValueError("'SMILES_Harmonized' column not found in ApprovedDrugs.csv")
 
     return df_atc

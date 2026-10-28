@@ -1,11 +1,11 @@
 
 """
-ADME‑TEC Streamlit Application
+ADMETec Streamlit Application
 ==============================
 
 
 This module implements an interactive web interface for:
-- ADMET prediction using ADMET‑AI
+- ADMET prediction using ADMET‑AI 
 - ChEMBL / DrugBank reference retrieval
 - Metabolite prediction (GLORYx)
 - Desirability‑based compound prioritization
@@ -18,7 +18,6 @@ Author: Fernanda Saldivar
 # ============================== IMPORTS ==============================
 import pandas as pd
 import streamlit as st
-from admet_ai import ADMETModel
 from PIL import Image
 import os
 import torch, argparse
@@ -40,7 +39,7 @@ if ROOT_DIR not in sys.path:
 # --- Internal project modules ---
 from src.utils.inputs import molecule_input
 from src.utils.visualization import show_molecules
-from src.target.chembl_utils import get_mechanism_metadata, retrieve_chembl_data
+from src.target.chembl_utils import get_mechanism_metadata, get_chembl_adme_properties
 from src.chemistry.standardizer_utils import process_molecule_row
 from src.admet.radar_plot import plot_radar_with_min_max_df, plot_desirability_heatmap, render_heatmap
 from src.admet.adme_mappings import categories_adme, map_columns_perc, map_columns
@@ -55,6 +54,7 @@ from src.admet.reference_analysis import compute_reference_variability, compute_
 from src.admet.Sensitive_test import perturb_weights_sensitivity
 from rdkit import Chem
 from src.admet.molecular_features import render_molecular_features
+from src.admet.admet_prediction import predict_admet 
 
 
 # Robust TOML loader: prefer stdlib tomllib (Python 3.11+), fall back to the 'toml' package.
@@ -116,19 +116,7 @@ except Exception as _e:
     THEME_CSS = None
     print(f"Warning: failed to prepare theme CSS from {config_path}: {_e}")
 
-# ========================= ADMET MODEL LOADING ==========================
-@st.cache_resource
-def load_admet_model():
-    return ADMETModel()
 
-# ============================== TORCH PATCH =============================
-# Fix compatibility with PyTorch ≥ 2.6 when loading serialized objects
-_original_torch_load = torch.load
-def safe_torch_load(*args, **kwargs):
-    kwargs["weights_only"] = False
-    with torch.serialization.safe_globals([argparse.Namespace]):
-        return _original_torch_load(*args, **kwargs)
-torch.load = safe_torch_load
 
 # ============================= PAGE CONFIG ==============================
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -505,63 +493,81 @@ if chembl_target:
 if smiles_list:
     if st.session_state.adme_df.empty:
         with st.spinner("Calculating ADMET for input molecules..."):
-            model = load_admet_model()
-            adme_results = model.predict(smiles_list)
+            try:
+                adme_df = predict_admet(
+                    smiles_list=smiles_list,
+                    input_df=input_df,
+                )
+                st.session_state.adme_df = adme_df
 
-            adme_df = pd.DataFrame(adme_results)
+            except Exception as e:
+                st.error(f"Error predicting ADMET properties: {e}")
 
-            # Create complementary BBB score (high = safer, low BBB penetration)
-            if "BBB_Martins" in adme_df.columns:
-                adme_df["BBB_Martins_Safe"] = 1 - adme_df["BBB_Martins"]
-
-            # Insert structural columns
-            adme_df.insert(0, "smiles", smiles_list)
-
-            if input_df is not None and "ID" in input_df.columns:
-                adme_df["ID"] = input_df["ID"].values
-
-            st.session_state.adme_df = adme_df
-
-    st.markdown("## ADMET Properties of Input Molecules")
-    st.dataframe(st.session_state.adme_df, use_container_width=True)
-
-
-# ==================== REFERENCE RETRIEVAL =======================
-# Calculate ADMET for ChEMBL compounds based on selected action types and cache results
-# ---------------------------
-        
-    if (
-        st.session_state.get("selected_actions") is not None
-        and st.session_state.adme_chembl_df.empty
-        ):
-
-        try:
-            with st.spinner("Calculating ADMET for ChEMBL compounds..."):
-
-                    chembl_df, adme_chembl_df = retrieve_chembl_data(
-                    chembl_target,
-                    st.session_state.selected_actions
-                    )
-                    # Create complementary BBB score (high = safer, low BBB penetration)
-                    if "BBB_Martins" in adme_chembl_df.columns:
-                        adme_chembl_df["BBB_Martins_Safe"] = 1 - adme_chembl_df["BBB_Martins"]
-                    st.session_state.chembl_df = chembl_df
-                    st.session_state.adme_chembl_df = adme_chembl_df
-
-        except Exception as e:
-                st.error(f"Error retrieving ChEMBL or ADMET data: {e}")
-
-    # ---------------------------
-    # Display ADMET predictions if available
-    # ---------------------------
-
-    if not st.session_state.adme_chembl_df.empty:
-        st.markdown("---")
-        st.markdown("## ADMET Properties of ChEMBL Compounds")
+    if not st.session_state.adme_df.empty:
+        st.markdown("## ADMET Properties of Input Molecules")
         st.dataframe(
-            st.session_state.adme_chembl_df,
-            use_container_width=True
+            st.session_state.adme_df,
+            use_container_width=True,
         )
+    
+# =========================================================
+# ------------------- REFERENCE RETRIEVAL -----------------
+# =========================================================
+
+    if chembl_target and st.session_state.get("selected_actions") is not None:
+
+        # -------------------------------------------------
+        # Reset ChEMBL session state when selection changes
+        # -------------------------------------------------
+        current_selection = (
+            chembl_target,
+            tuple(sorted(st.session_state.selected_actions))
+        )
+
+        if "last_chembl_selection" not in st.session_state:
+            st.session_state.last_chembl_selection = None
+
+        if current_selection != st.session_state.last_chembl_selection:
+
+            st.session_state.adme_chembl_df = pd.DataFrame()
+            st.session_state.chembl_df = pd.DataFrame()
+
+            st.session_state.last_chembl_selection = current_selection
+
+        # -------------------------------------------------
+        # Retrieve precomputed ChEMBL ADMET properties
+        # -------------------------------------------------
+        if st.session_state.adme_chembl_df.empty:
+
+            try:
+                with st.spinner("Loading ChEMBL ADMET properties..."):
+
+                    df_chembl = get_chembl_adme_properties(
+                        chembl_target,
+                        st.session_state.selected_actions
+                    )
+
+                    st.session_state.chembl_df = df_chembl.copy()
+                    st.session_state.adme_chembl_df = df_chembl.copy()
+
+            except Exception as e:
+                st.error(f"Error retrieving ChEMBL ADMET data: {e}")
+
+        # -------------------------------------------------
+        # Display ChEMBL ADMET properties
+        # -------------------------------------------------
+        if not st.session_state.adme_chembl_df.empty:
+
+            st.markdown("---")
+
+            st.markdown(
+                f"## ADMET Properties of ChEMBL Compounds for {chembl_target}"
+            )
+
+            st.dataframe(
+                st.session_state.adme_chembl_df,
+                use_container_width=True
+            )
 
     # =========================================================
     # ----------------------- ATC SECTION ---------------------
