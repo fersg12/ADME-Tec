@@ -8,7 +8,6 @@ from admet_ai import ADMETModel
 from prop_profiler import configure_logging, profile_molecules
 
 
-
 # Compatibility patch for PyTorch >= 2.6.
 # Preserve the original loader to avoid wrapping it repeatedly.
 if not getattr(torch.load, "_admetec_patched", False):
@@ -73,33 +72,38 @@ def predict_admet(smiles_list, input_df=None):
     else:
         profile_df = pd.DataFrame(profile_results)
 
+    # Keep only selected properties
+    selected_properties = [
+        "prop_profile_most_basic_pka",
+        "prop_profile_logd",
+        "prop_profile_fsp3",
+        "prop_profile_cns_mpo_score",
+        "prop_profile_stoplight_score",
+        "prop_profile_stoplight_color",
+    ]
+
+    profile_df = profile_df[
+        [col for col in selected_properties if col in profile_df.columns]
+    ].copy()
+
     # Reset indices to preserve row correspondence.
     adme_df = adme_df.reset_index(drop=True)
     profile_df = profile_df.reset_index(drop=True)
 
-    # Validate that both tools returned the same number of molecules.
+    # Validate result counts.
     if len(profile_df) != len(adme_df):
         raise ValueError(
             "The number of Prop_profile results does not match "
             "the number of ADMET-AI predictions."
         )
 
-    # Remove duplicate identifiers from Prop_profile.
-    if "smiles" in profile_df.columns:
-        profile_df = profile_df.drop(columns=["smiles"])
-
-    if "ID" in profile_df.columns:
-        profile_df = profile_df.drop(columns=["ID"])
-
-    # Prefix all Prop_profile columns to prevent naming conflicts.
-    profile_df = profile_df.rename(
-        columns={
-            col: f"prop_profile_{col}"
-            for col in profile_df.columns
-        }
+    # Remove identifiers if present.
+    profile_df = profile_df.drop(
+        columns=["smiles", "ID"],
+        errors="ignore"
     )
 
-    # Combine ADMET-AI predictions with Prop_profile properties.
+    # Combine ADMET-AI and Prop_profile results.
     adme_df = pd.concat([adme_df, profile_df], axis=1)
 
     # Preserve original IDs when available.
@@ -122,5 +126,6 @@ def predict_admet(smiles_list, input_df=None):
         raise ValueError(
             f"Duplicate columns remain in prediction results: {duplicates}"
         )
-
+    print(profile_df.columns.tolist())
     return adme_df
+
